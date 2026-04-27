@@ -1,13 +1,13 @@
 #!/bin/bash
 
 #SBATCH -p highmem
-#SBATCH --job-name=mixcr			            # Job name
-#SBATCH --mail-type=END,FAIL          		# Mail events (NONE, BEGIN, END, FAIL, ALL)
-#SBATCH --mail-user=endikaprieto@vhio.net     	# Where to send mail
-#SBATCH --ntasks=1  				              # Run on a single CPU
+#SBATCH --job-name=mixcr
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=endikaprieto@vhio.net
+#SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=100gb                    		# Job memory request
-#SBATCH --time=24:00:00               		# Time limit hrs:min:sec
+#SBATCH --mem=100gb
+#SBATCH --time=24:00:00
 #SBATCH --output=%x_%j.log
 #SBATCH --error=%x_%j.err
 

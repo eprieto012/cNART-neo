@@ -15,7 +15,7 @@ sample <- "TIL15"
 folder_data <- "ITAG_AGG_Bulk"
 # --- Define data loading path ---
 datapath_seqtr <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/collabs/Andrea Garcia VHIO/CancerDiscovery_2026/SEQTR/ISF_Rep_2026_00912/"
-datapath_reactive <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients/TIL15/ITAG_AGG_Bulk/outs/Reactive_IDs_TIL15.txt"
+datapath_reactive <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients/TIL15/ITAG_AGG_Bulk/outs/reactive-clono.txt"
 # --- Initialize lists for plot storage ---
 plots_list <- list()
 ```

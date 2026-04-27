@@ -1,21 +1,22 @@
-# Compartment Frequency Analysis
+# Cross-Sample Clonotype Frequency Analysis
 
-## Analysis Workflow
+## Overview
 
-Run `ITAG_TIL15_Bulk_m1.Rmd` to compare TCRβ clonotype frequencies across bulk repertoire samples from tumor, peripheral blood, and TIL infusion product.
+This module compares TCRβ clonotype frequencies across bulk repertoire samples from tumor biopsy, peripheral blood, and TIL infusion product samples.
 
-## TCRβ Processing
+## Workflow
 
-Only productive in-frame clonotypes were retained. Clonotypes were defined by CDR3β amino-acid sequence together with TRBV and TRBJ genes, and frequencies were calculated within each sample.
+### Script: `ITAG_TIL15_S03_m1.Rmd`
 
-## Reactive TCR Annotation
-
-Validated clonotypes were annotated using `reactive-clono.txt`, including TCR identifier and experimental reactivity status.
+- Imports bulk TCRβ repertoire tables from multiple patient-derived samples.
+- Retains productive in-frame clonotypes only.
+- Defines clonotypes using CDR3β amino-acid sequence together with TRBV and TRBJ genes.
+- Calculates within-sample clonotype frequencies.
+- Annotates validated clonotypes using `reactive-clono.txt`.
+- Compares reactive and non-reactive clonotype frequencies across samples.
 
 ## Output
 
-Frequency plots were generated to compare reactive and non-reactive clonotypes across compartments.
-
 <p align="center">
-  <img src="plot.jpg" width="1000">
+  <img src="plot-clono.jpg">
 </p>

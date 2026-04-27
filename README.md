@@ -1,63 +1,49 @@
 # Single-Cell Profiling of (Neo)Antigen-Reactive TCRs Across Blood Compartments
 
-> Computational analyses supporting the manuscript  
-> ***Peripheral Blood as the Sole Source for Cancer Neoantigen and Reactive T Cell Discovery***  
-> Garcia-Garijo A et al., 2026
+> Computational analyses supporting the manuscript ***Peripheral Blood as the Sole Source for Cancer Neoantigen and Reactive T Cell Discovery*** by Garcia-Garijo A et al., 2026.
 
 ## Overview
 
-This repository contains the computational workflows used to identify dominant neoantigen-associated TCR clonotypes from antigen-specific co-culture experiments and to track their phenotypic distribution across peripheral blood T-cell compartments.
+This repository contains computational workflows to identify dominant TCR clonotypes from antigen-specific co-culture assays of TILs and PBMCs with autologous B cells presenting candidate (neo)antigens in tandem minigene (TMG) format, track their phenotypic distribution across peripheral blood CD8+ T-cell subsets defined by PD-1 and CD39 expression, and compare their frequencies across tumor biopsy, peripheral blood, and TIL infusion product samples.
 
 The project is organised into three sequential analysis phases.
 
-***
+## Workflow
 
-## Workflow Structure
-
-### Phase 1: Dominant Clonotype Discovery  
+### Phase 1: Antigen-Associated Clonotype Discovery
 **Module:** [`disc/`](https://github.com/eprieto012/cNART-neo/tree/main/disc)
 
-Run `ITAG_TIL15_S02_m1.Rmd`
+Script m1 `ITAG_TIL15_S02_m1.Rmd`:
 
-This workflow:
+- Preprocesses 10x Genomics 5′ gene-expression and V(D)J data.
+- Rescues missing TCR assignments using MiXCR.
+- Filters low-quality cells and features.
+- Annotates CD4+ and CD8+ T cells.
+- Prioritises expanded antigen-associated clonotypes.
 
-- preprocesses 10x Genomics 5′ gene-expression and V(D)J data
-- rescues missing TCR assignments using MiXCR
-- filters low-quality cells and features
-- annotates CD4+ and CD8+ T cells
-- identifies dominant clonotypes
-
-***
-
-### Phase 2: Cross-Compartment Tracking and Validation  
+### Phase 2: Cross-Compartment Clonotype Tracking
 **Module:** [`track/`](https://github.com/eprieto012/cNART-neo/tree/main/track)
 
-Run `ITAG_TIL15_S01_m1.Rmd`
-Run `ITAG_TIL15_S01_m2.Rmd`
+Script m1 `ITAG_TIL15_S01_m1.Rmd` reproduces the shared preprocessing workflow described in Phase 1.
 
-This workflow uses Phase 1 outputs to:
+Script m2 `ITAG_TIL15_S01_m2.Rmd` uses the Phase 1 outputs to:
 
-- track clonotypes across CD8+ bulk / CD39+ / CD39− compartments
-- prioritise candidates based on expansion and PDCD1 status
-- map clonotypes onto CD8+ T-cell states
-- project experimentally validated reactive TCRs onto the single-cell atlas
+- Track clonotypes across CD8+ bulk, CD39+, and CD39− compartments.
+- Prioritise candidates for validation based on expansion, PDCD1 expression, and compartment of origin.
+- Map clonotypes and validated reactivity status onto CD8+ T-cell states.
 
-***
-
-### Phase 3: Compartment Frequency Analysis  
+### Phase 3: Cross-Sample Clonotype Frequency Analysis
 **Module:** [`bulk/`](https://github.com/eprieto012/cNART-neo/tree/main/bulk)
 
-Run `ITAG_TIL15_Bulk_m1.Rmd`
+Script `ITAG_TIL15_S03_m1.Rmd`:
 
-This workflow compares candidate clonotype frequencies across tumor biopsy, peripheral blood, and TIL infusion product samples.
+- Compares candidate clonotype frequencies across tumor biopsy, peripheral blood, and TIL infusion product samples.
 
-***
-
-## Setup Scripts
+### Setup
 
 **Module:** [`setup/`](https://github.com/eprieto012/cNART-neo/tree/main/setup)
 
-`setup-m1.R` — common setup used by the main single-cell workflows, including preprocessing, QC, clonotype recovery, filtering, annotation, and clonotype-frequency analysis.
-`setup-m2.R` — module-specific setup for cross-compartment tracking and validation.
+These scripts provide shared R/Python configuration, plotting themes, random seeds, and helper functions for the main workflows.
 
-These scripts define package dependencies, Python/MAGIC configuration, plotting themes, random seeds, and helper functions used by the main R Markdown workflows.
+- `setup-m1.R` — common setup for the core single-cell workflows, including preprocessing, quality control, clonotype recovery, filtering, annotation, and clonotype-frequency analysis.
+- `setup-m2.R` — additional setup for cross-compartment tracking, candidate prioritisation, and validation analyses.

@@ -16,7 +16,7 @@ sample <- "TIL15"
 folder_data <- "ITAG_AGG_S01"
 # --- Define data loading path ---
 datapath_tcrb <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/collabs/Andrea Garcia VHIO/CancerDiscovery_2026/SEQTR/ISF_Rep_2026_00912"
-datapath_tcr_validation <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients/TIL15/ITAG_AGG_S01/outs/validated_tcrs.txt"
+datapath_tcr_validation <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients/TIL15/ITAG_AGG_S01/outs/validated-tcrs.txt"
 # --- Initialize lists for plot storage ---
 plots_list <- list()
 pdfcluster_plots <- list()

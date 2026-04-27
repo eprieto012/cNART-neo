@@ -1,0 +1,1214 @@
+---
+title: "Identification of dominant TCRs following co-culture with TMG-loaded APCs"
+author: "Endika Prieto <endikaprieto@vhio.net>"
+date: "2026-04-24"
+---
+
+# setup
+
+```{r, warning=FALSE, message=FALSE}
+# --- Load libraries and custom functions ---
+set.seed(123)
+source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/TIL15/setup-m1.R")
+
+# --- Define paths and sample identifiers ---
+datapath <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients"
+sample <- "TIL15"
+folder_data <- "ITAG_AGG_S02"
+
+# --- Define data loading path ---
+datapath_load <- "/Volumes/datos_lab/single_cell"
+datapath_mixcr <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/mixcr"
+
+# --- Initialize lists for plot storage ---
+plots_list <- list()
+pdfcluster_plots <- list()
+```
+
+# data load
+
+Assessment of ambient RNA contamination using SoupX.
+
+https://cran.r-project.org/web/packages/SoupX/vignettes/pbmcTutorial.html
+https://www.sc-best-practices.org/preprocessing_visualization/quality_control.html
+https://cellgeni.github.io/notebooks/html/new-10kPBMC-SoupX.html
+
+```{r}
+object_files <- list.dirs(
+  file.path(datapath_load, sample, folder_data),
+  full.names = TRUE,
+  recursive = FALSE
+)
+object_tags <- c("Sample1", "Sample2", "Sample3", "Sample4")
+obj_VH <- list()
+soupX_VH <- list()
+for (i in seq_along(object_files)) {
+  toc <- Read10X(file.path(object_files[i], "sample_filtered_feature_bc_matrix"))
+  toc_seurat <- CreateSeuratObject(toc)
+  obj_VH[[as.character(object_tags[i])]] <- toc_seurat
+  obj_VH[[as.character(object_tags[i])]]$tag <- paste0(object_tags[i], "_")
+  tod <- Read10X(file.path(object_files[i], "sample_raw_feature_bc_matrix"))
+  sc <- SoupChannel(tod, toc)
+  toc_seurat <- PercentageFeatureSet(toc_seurat, pattern = "^MT-", col.name = "percent.mt")
+  toc_seurat <- SCTransform(toc_seurat, vars.to.regress = "percent.mt", verbose = FALSE)
+  toc_seurat <- RunPCA(toc_seurat, verbose = FALSE)
+  toc_seurat <- RunTSNE(toc_seurat, dims = 1:10, seed.use = 123)
+  toc_seurat <- RunUMAP(toc_seurat, dims = 1:10, seed.use = 123)
+  toc_seurat <- FindNeighbors(toc_seurat, dims = 1:10, verbose = FALSE)
+  toc_seurat <- FindClusters(toc_seurat, verbose = FALSE, resolution = 1.2, random.seed = 123)
+  DefaultAssay(toc_seurat) <- "RNA"
+  meta <- toc_seurat@meta.data
+  umap <- toc_seurat@reductions$umap@cell.embeddings
+  sc <- setClusters(sc, setNames(meta$seurat_clusters, rownames(meta)))
+  sc <- setDR(sc, umap)
+  sc  <- autoEstCont(sc, forceAccept = TRUE)
+  soupX_VH[[as.character(object_tags[i])]] <- sc
+  rm(toc, toc_seurat, tod, sc, meta, umap, i)
+}
+dir.create(file.path(datapath, sample, folder_data, "seurat"), recursive = F)
+saveRDS(soupX_VH, file.path(datapath, sample, folder_data, "seurat/soupX.rds"))
+rm(object_files, object_tags)
+```
+
+Gene-level contributions to ambient RNA estimated by SoupX (no correction applied).
+
+```{r}
+plots_soupX <- list()
+for (i in names(soupX_VH)) {
+  data_i <- head(
+    soupX_VH[[i]]$soupProfile[
+      order(soupX_VH[[i]]$soupProfile$est, decreasing = TRUE), 
+    ],
+    n = 50
+  )
+  data_i$gene <- as.character(row.names(data_i))
+  data_i$gene <- factor(data_i$gene, levels = data_i$gene)
+  data_i$source <- ifelse(
+    grepl("^MT-", data_i$gene), "mito",
+    ifelse(grepl("^RPS|^RPL", data_i$gene), "ribo", "other")
+  )
+  plot_i <- ggplot(data_i, aes(x = gene, y = est, fill = source)) +
+    geom_col(width = 0.8) +
+    geom_text(
+      aes(label = ifelse(source == "other", as.character(gene), "")),
+      hjust = -0.1, vjust = -0.5,
+      size = 2.5,
+      angle = 45
+    ) +
+    coord_cartesian(ylim = c(0, 0.13), clip = "off") +
+    scale_fill_manual(
+      values = c(
+        "mito" = "red3",
+        "ribo" = "gray60",
+        "other" = "gray20"
+      )
+    ) +
+    labs(
+      title = i,
+      x = NULL,
+      y = "SoupX estimate",
+      fill = "Source"
+    ) +
+    theme_ic +
+    theme(
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank()
+    )
+  plots_soupX[[as.character(i)]] <- plot_i
+}
+plots_list[["IC01_soupX"]] <- wrap_plots(plots_soupX, ncol = 2)
+print(plots_list$IC01_soupX)
+rm(soupX_VH, plots_soupX, i, data_i, plot_i)
+```
+
+Count distribution across samples.
+Broadly consistent, with minor differences in spread and tail length.
+
+```{r}
+names <- names(obj_VH)
+gene <- "CD3E"
+gpha <- lapply(
+  setNames(names, names),
+  function(x) {
+    df <- data.frame(counts = obj_VH[[x]]@assays$RNA$counts[gene, ])
+    ggplot(df, aes(x = counts)) +
+      geom_histogram(
+        bins = 50,
+        fill = "gray50",
+        color = "black",
+        linewidth = 0.2
+      ) +
+      ggtitle(x) +
+      scale_x_continuous(
+        breaks = seq(0, max(df$counts, na.rm = TRUE), by = 10),
+        expand = expansion(mult = c(0, 0.02))
+      ) +
+      labs(
+        x = "Counts",
+        y = "Cells"
+      ) +
+      theme_ic
+  }
+)
+plots_list[["IC02_counts"]] <- wrap_plots(gpha, ncol = 2)
+print(plots_list$IC02_counts)
+rm(gpha, gene)
+```
+
+VDJ data loading with djvdj.
+
+https://rnabioco.github.io/djvdj/
+
+```{r}
+vdj_files <- list.files(file.path(datapath_load, sample, folder_data))[-1]
+vdj_dirs <- paste0(file.path(datapath_load, sample, folder_data), "/", vdj_files)
+vdj_dirs <- setNames(vdj_dirs, vdj_files)
+for (i in seq_along(vdj_dirs)){
+  so <- obj_VH[[i]]
+  so <- import_vdj(so, vdj_dir = vdj_dirs[[i]])
+  obj_VH[[i]] <- so
+}
+rm(vdj_files, vdj_dirs, so, datapath_load, i)
+```
+
+Sample annotation by time point.
+
+```{r}
+for (nm in names(obj_VH)) {
+  obj <- obj_VH[[nm]]
+  obj$sample <- nm
+  new_names <- paste0(obj$tag, colnames(obj))
+  obj <- RenameCells(obj, new.names = new_names)
+  obj_VH[[nm]] <- obj
+}
+rm(obj, nm, new_names)
+```
+
+Sample merging.
+
+```{r}
+obj <- c(obj_VH)
+obj <- Reduce(merge, obj)
+obj <- JoinLayers(obj)
+obj$tag <- gsub("_$", "", obj$tag)
+obj@meta.data$tag <- factor(obj@meta.data$tag, levels = c("Sample1", "Sample2", "Sample3", "Sample4"))
+rm(obj_VH)
+```
+
+Quality control overview.
+
+```{r, warning=FALSE}
+# --- Logreads ---
+obj$logreads <- log(colSums(obj$RNA))
+# --- Mito and ribo genes ---
+obj <- PercentageFeatureSet(obj, pattern = "^MT-", col.name = "percent.mt")
+obj <- PercentageFeatureSet(obj, pattern="^RPL", col.name = "percent.rpl")
+obj <- PercentageFeatureSet(obj, pattern="^RPS", col.name = "percent.rps")
+obj <- PercentageFeatureSet(obj, pattern="^RPS|^RPL", col.name = "percent.rpa")
+# --- TCR genes---
+obj <- PercentageFeatureSet(obj, pattern="^TRAV", col.name = "TRAV.avg")
+obj <- PercentageFeatureSet(obj, pattern="^TRAJ", col.name = "TRAJ.avg")
+obj <- PercentageFeatureSet(obj, pattern="^TRBV", col.name = "TRBV.avg")
+obj <- PercentageFeatureSet(obj, pattern="^TRBJ", col.name = "TRBJ.avg")
+obj <- PercentageFeatureSet(obj, pattern="^TRGV", col.name = "TRGV.avg")
+obj <- PercentageFeatureSet(obj, pattern="^TRDV", col.name = "TRDV.avg")
+```
+
+Definition of TCR-positive and TCR-negative cell subsets.
+
+```{r}
+md <- obj@meta.data
+n1 <- rownames(subset(md, subset = !is.na(cdr3)))
+n2 <- rownames(subset(md, subset = is.na(cdr3)))
+obj$tag.tcr <- ifelse(colnames(obj) %in% n1, "yes", "no")
+```
+
+Comparison of quality control metrics by TCR status.
+
+```{r}
+metrics <- c("percent.mt", "percent.rpa", "TRAV.avg", "TRBV.avg")
+# --- Cells with TCR ---
+qc_tcr <- list()
+for (i in metrics) {
+  plot_i <- ggplot(
+    md[n1, , drop = FALSE],
+    aes(x = tag, y = .data[[i]], fill = tag)
+  ) +
+    geom_boxplot(
+      outlier.alpha = 0.2,
+      linewidth = 0.3
+    ) +
+    scale_fill_brewer(palette = "Paired") +
+    labs(
+      y = i
+    ) +
+    theme_ic +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "none"
+    )
+  if (i == "percent.mt") {
+    plot_i <- plot_i +
+      geom_hline(
+        yintercept = 10,
+        linetype = "dashed",
+        color = "black",
+        linewidth = 0.3
+      )
+  }
+  qc_tcr[[i]] <- plot_i
+}
+# --- Cells without TCR ---
+qc_no_tcr <- list()
+for (i in metrics) {
+  plot_i <- ggplot(
+    md[n2, , drop = FALSE],
+    aes(x = tag, y = .data[[i]], fill = tag)
+  ) +
+    geom_boxplot(
+      outlier.alpha = 0.2,
+      linewidth = 0.3
+    ) +
+    scale_fill_brewer(palette = "Paired") +
+    labs(
+      y = i
+    ) +
+    theme_ic +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "none"
+    )
+  if (i == "percent.mt") {
+    plot_i <- plot_i +
+      geom_hline(
+        yintercept = 10,
+        linetype = "dashed",
+        color = "black",
+        linewidth = 0.3
+      )
+  }
+  qc_no_tcr[[i]] <- plot_i
+}
+# --- Plots ---
+plots_list[["IC03_qc_tcr"]] <- wrap_plots(qc_tcr, ncol = 2) +
+  plot_annotation(title = "Cells with TCR")
+plots_list[["IC03_qc_no_tcr"]] <- wrap_plots(qc_no_tcr, ncol = 2) +
+  plot_annotation(title = "Cells without TCR")
+print(plots_list[["IC03_qc_tcr"]])
+print(plots_list[["IC03_qc_no_tcr"]])
+rm(i, metrics, plot_i, qc_tcr, qc_no_tcr)
+```
+
+Evaluation of mitochondrial and ribosomal filtering thresholds.
+
+```{r}
+metrics <- c("percent.mt", "percent.rpl", "percent.rps", "percent.rpa")
+# --- Cells with TCR ---
+qc_curves_tcr <- list()
+for (i in metrics) {
+  thresholds <- seq(0, 70, by = 1)
+  results <- data.frame(
+    threshold = numeric(),
+    passing_cells = numeric(),
+    tag = character()
+  )
+  for (j in unique(md$tag)) {
+    tag_data <- md[n1, , drop = FALSE]
+    tag_data <- tag_data[tag_data$tag == j, , drop = FALSE]
+    if (nrow(tag_data) == 0) next
+    for (k in thresholds) {
+      percent_passing <- mean(tag_data[[i]] <= k, na.rm = TRUE)
+      results <- rbind(
+        results,
+        data.frame(
+          threshold = k,
+          passing_cells = percent_passing,
+          tag = j
+        )
+      )
+    }
+  }
+  results$tag <- factor(results$tag, levels = unique(md$tag))
+  plot_i <- ggplot(results, aes(x = threshold, y = passing_cells, color = tag)) +
+    geom_line(linewidth = 0.6) +
+    scale_color_brewer(palette = "Paired") +
+    scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.02))) +
+    labs(
+      x = paste0("max_", i),
+      y = "Fraction passing filter",
+      color = "Sample"
+    ) +
+    theme_ic
+  if (i == "percent.mt") {
+    plot_i <- plot_i +
+      geom_vline(
+        xintercept = 10,
+        linetype = "dashed",
+        linewidth = 0.3,
+        color = "black"
+      )
+  }
+  qc_curves_tcr[[i]] <- plot_i
+}
+# --- Cells without TCR ---
+qc_curves_no_tcr <- list()
+for (i in metrics) {
+  thresholds <- seq(0, 70, by = 1)
+  results <- data.frame(
+    threshold = numeric(),
+    passing_cells = numeric(),
+    tag = character()
+  )
+  for (j in unique(md$tag)) {
+    tag_data <- md[n2, , drop = FALSE]
+    tag_data <- tag_data[tag_data$tag == j, , drop = FALSE]
+    if (nrow(tag_data) == 0) next
+    for (k in thresholds) {
+      percent_passing <- mean(tag_data[[i]] <= k, na.rm = TRUE)
+      results <- rbind(
+        results,
+        data.frame(
+          threshold = k,
+          passing_cells = percent_passing,
+          tag = j
+        )
+      )
+    }
+  }
+  results$tag <- factor(results$tag, levels = unique(md$tag))
+  plot_i <- ggplot(results, aes(x = threshold, y = passing_cells, color = tag)) +
+    geom_line(linewidth = 0.6) +
+    scale_color_brewer(palette = "Paired") +
+    scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.02))) +
+    labs(
+      x = paste0("max_", i),
+      y = "Fraction passing filter",
+      color = "Sample"
+    ) +
+    theme_ic
+  if (i == "percent.mt") {
+    plot_i <- plot_i +
+      geom_vline(
+        xintercept = 10,
+        linetype = "dashed",
+        linewidth = 0.3,
+        color = "black"
+      )
+  }
+  qc_curves_no_tcr[[i]] <- plot_i
+}
+# --- Plots ---
+plots_list[["IC04_qc_mt_filt_tcr"]] <- wrap_plots(qc_curves_tcr, ncol = 2) +
+  plot_annotation(title = "Cells with TCR")
+plots_list[["IC04_qc_mt_filt_no_tcr"]] <- wrap_plots(qc_curves_no_tcr, ncol = 2) +
+  plot_annotation(title = "Cells without TCR")
+print(plots_list[["IC04_qc_mt_filt_tcr"]])
+print(plots_list[["IC04_qc_mt_filt_no_tcr"]])
+rm(
+  md, n1, n2, i, j, k, metrics, thresholds, results, tag_data, percent_passing,
+  plot_i, qc_curves_tcr, qc_curves_no_tcr
+)
+```
+
+Stratification of cells by mitochondrial content.
+
+```{r}
+obj$tag.mt <- case_when(
+  obj$percent.mt > 20 ~ "elim_mt",
+  obj$percent.mt >= 15 & obj$percent.mt <= 20 ~ "high_mt",
+  obj$percent.mt >= 10 & obj$percent.mt < 15 ~ "int_mt",
+  obj$percent.mt < 10 ~ "low_mt"
+)
+obj$tag.mt <- factor(obj$tag.mt, levels = c("elim_mt", "low_mt", "int_mt", "high_mt"))
+# --- Summary table ---
+print(table(obj$tag.mt, obj$tag))
+```
+
+Association between mitochondrial/ribosomal content and TCR detection.
+
+```{r}
+md <- obj@meta.data
+md$tag <- factor(md$tag, levels = c("Sample1", "Sample2", "Sample3", "Sample4"))
+md$tag.tcr_label <- ifelse(md$tag.tcr == "yes", "Cells with TCR", "Cells without TCR")
+md$tag.tcr_label <- factor(
+  md$tag.tcr_label,
+  levels = c("Cells with TCR", "Cells without TCR")
+)
+mito_plots_filter <- ggplot(
+  md,
+  aes(
+    x = log(percent.mt),
+    y = log(percent.rpa),
+    color = tag.mt,
+    shape = tag.tcr
+  )
+) +
+  geom_point(alpha = 0.3, size = 1.5) +
+  facet_grid(
+    rows = vars(tag.tcr_label),
+    cols = vars(tag)
+  ) +
+  geom_vline(
+    xintercept = log(c(10, 15, 20)),
+    linetype = "dashed",
+    linewidth = 0.3,
+    color = "black"
+  ) +
+  scale_color_manual(
+    values = c(
+      "elim_mt" = "red3",
+      "high_mt" = "orange2",
+      "int_mt" = "green4",
+      "low_mt" = "gray20"
+    )
+  ) +
+  scale_shape_manual(values = c("yes" = 1, "no" = 3)) +
+  labs(
+    title = "Mitochondrial filtering",
+    x = "log(percent.mt)",
+    y = "log(percent.rpa)",
+    color = "MT category",
+    shape = "TCR"
+  ) +
+  theme_ic
+plots_list[["IC05_qc_mito_filter_tcrb"]] <- mito_plots_filter
+print(plots_list[["IC05_qc_mito_filter_tcrb"]])
+rm(mito_plots_filter, md)
+```
+
+Doublet detection using scDblFinder.
+
+https://github.com/plger/scDblFinder?tab=readme-ov-file
+https://plger.github.io/scDblFinder/articles/scDblFinder.html
+
+```{r, warning=FALSE}
+set.seed(123)
+# --- Transform Seurat to SCE ---
+sce_obj <- as.SingleCellExperiment(obj, assay = "RNA")
+colData(sce_obj)$tag <- obj$tag
+sce_obj <- scDblFinder(
+  sce_obj,
+  samples = "tag",
+  clusters = FALSE,
+  BPPARAM = BiocParallel::SerialParam(RNGseed = 123)
+)
+# --- Return to Seurat ---
+obj$scDblFinder.score <- sce_obj$scDblFinder.score
+obj$scDblFinder.class <- sce_obj$scDblFinder.class
+table(obj$scDblFinder.class)
+rm(sce_obj)
+```
+
+Association between doublet scores and logreads.
+
+```{r}
+doublet_plots <- ggplot(
+  obj@meta.data,
+  aes(x = logreads, y = scDblFinder.score, color = scDblFinder.class)
+) +
+  geom_point(alpha = 0.3, size = 1.5) +
+  facet_wrap(~tag) +
+  scale_color_manual(
+    values = c(
+      "doublet" = "red3",
+      "singlet" = "gray20"
+    )
+  ) +
+  labs(
+    title = "Doublets",
+    x = "logreads",
+    y = "scDblFinder score",
+    color = "scDblFinder class"
+  ) +
+  theme_ic
+plots_list[["IC06_qc_doublets_tcrb"]] <- doublet_plots
+print(plots_list$IC06_qc_doublets_tcrb)
+rm(doublet_plots)
+```
+
+# mixcr
+
+Cell Ranger did not recover TCR information for a subset of T cells with high TCR gene expression. To rescue these assignments, we used MiXCR. Based on discussions with the MiXCR bioinformatics team, we adopted the following strategy:
+
+1. Assign each cell to its corresponding GEM using GEX-based cell calls generated by Cell Ranger.  
+2. Restrict MiXCR analysis to GEMs identified as containing cells.  
+
+This workflow requires the generation of a `10x-sample-sheet.tsv` file, which must be available in the working directory prior to execution.
+
+```{r}
+table <- data.frame(
+  Sample     = obj@meta.data$tag,
+  tagPattern = "",
+  `CELL*`    = sub(
+    "-1$", "",
+    sub(".*_", "", row.names(obj@meta.data))
+  ),
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+write.table(table, file.path(datapath_mixcr, sample, folder_data, "10x-sample-sheet.tsv"), sep = "\t", row.names = FALSE, quote = FALSE)
+rm(table)
+```
+
+MiXCR was executed on the selected GEMs.
+
+Resulting clonotypes were loaded into R for downstream analysis.
+
+```{r, warning=FALSE}
+files <- c(
+  "sample_result.Sample1.clones.tsv",
+  "sample_result.Sample2.clones.tsv",
+  "sample_result.Sample3.clones.tsv",
+  "sample_result.Sample4.clones.tsv"
+)
+mixcr_list <- list()
+for (i in files) {
+mixcr <- read.table(file.path(datapath_mixcr, sample, folder_data, i), header = TRUE, sep = "\t", stringsAsFactors = FALSE) %>%
+  filter(cellGroup != "contamination") %>%
+  select(tagValueCELL, bestVHit, bestDHit, bestJHit, aaSeqCDR3, topChains) %>%
+  mutate(
+    bestVHit = sub("\\*.*", "", bestVHit),
+    bestDHit = sub("\\*.*", "", bestDHit),
+    bestJHit = sub("\\*.*", "", bestJHit)
+  )
+mixcr <- mixcr %>%
+  group_by(tagValueCELL) %>%
+  summarise(
+    ord = order(factor(topChains, levels = c("TRA","TRB"))),
+    bestVHit = paste(bestVHit[ord], collapse = ";"),
+    bestJHit = paste(bestJHit[ord], collapse = ";"),
+    aaSeqCDR3 = paste(aaSeqCDR3[ord], collapse = ";"),
+    topChains = paste(topChains[ord], collapse = ";"),
+    .groups = "drop"
+  ) %>%
+  select(-ord) %>%
+  distinct()
+colnames(mixcr) <- c("barcode", paste0(c("v_gene", "j_gene", "cdr3", "chains"), "_mixcr"))
+mixcr <- mixcr %>% filter(if_any(c(v_gene_mixcr, j_gene_mixcr, cdr3_mixcr, chains_mixcr), ~ . != "" & !is.na(.)))
+mixcr_list[[i]] <- mixcr
+}
+mixcr <- bind_rows(mixcr_list) %>% as.data.frame()
+# Internal control
+barcodes <- read.table(file.path(datapath_mixcr, sample, folder_data, "10x-sample-sheet.tsv"), header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+barcodes <- barcodes$CELL.
+message(
+  round(sum(mixcr$barcode %in% barcodes) / length(mixcr$barcode) * 100, 2),
+  "% of mixcr barcodes are in the Seurat object"
+)
+rm(mixcr_list, barcodes, files, i)
+```
+
+MiXCR-derived clonotypes were added to metadata.
+ 
+```{r}
+obj@meta.data$barcode <- str_extract(rownames(obj@meta.data), "(?<=_)[^-]+")
+row.names <- rownames(obj@meta.data)
+obj@meta.data <- obj@meta.data %>% left_join(mixcr, by = "barcode")
+obj@meta.data$tag.tcr_mixcr <- ifelse(is.na(obj@meta.data$chains_mixcr) | obj@meta.data$chains_mixcr == "", "no", "yes")
+rownames(obj@meta.data) <- row.names
+rm(mixcr, row.names)
+```
+
+A combined clonotype category (Cell Ranger + MiXCR) was subsequently defined to maximize TCR recovery.
+
+```{r}
+obj@meta.data <- obj@meta.data  %>%
+  mutate(
+    v_gene_combi = ifelse(tag.tcr == "yes", v_gene,
+                          ifelse(tag.tcr_mixcr == "yes", v_gene_mixcr, NA_character_)),
+    j_gene_combi = ifelse(tag.tcr == "yes", j_gene,
+                          ifelse(tag.tcr_mixcr == "yes", j_gene_mixcr, NA_character_)),
+    cdr3_combi   = ifelse(tag.tcr == "yes", cdr3,
+                          ifelse(tag.tcr_mixcr == "yes", cdr3_mixcr, NA_character_)),
+    chains_combi = ifelse(tag.tcr == "yes", chains,
+                          ifelse(tag.tcr_mixcr == "yes", chains_mixcr, NA_character_))
+  )
+obj@meta.data$tag.tcr_combi <- ifelse(is.na(obj@meta.data$chains_combi) | obj@meta.data$chains_combi == "", "no", "yes")
+```
+
+Cell filtering, based on:
+
+- Doublets.
+- Ribosomal genes.
+- TCR genes (https://github.com/ncborcherding/Trex/).
+- Genes with very low expression.
+- Cells with >20% percent.mt.
+- Cells without TCR information.
+
+```{r}
+obj <- subset(obj, subset = scDblFinder.class != "doublet")
+all_genes <- rownames(obj)
+counts <- GetAssayData(obj, assay = "RNA", layer = "counts")
+tcr_genes <- setdiff(all_genes, quietTCRgenes(all_genes))
+ribo_genes <- quietRibogenes(all_genes)
+expressed_genes <- rownames(counts)[rowSums(counts > 0) >= 5]
+keep_genes <- setdiff(intersect(all_genes, expressed_genes), c(tcr_genes, ribo_genes))
+keep_cells <- rownames(obj@meta.data)[
+  obj@meta.data$tag.mt != "elim_mt" &
+  obj@meta.data$tag.tcr_combi != "no"
+]
+obj <- subset(obj, features = keep_genes, cells = keep_cells)
+rm(all_genes, counts, tcr_genes, ribo_genes, expressed_genes, keep_genes, keep_cells)
+```
+
+# SCTransform
+
+Normalization and variance stabilization were performed using SCTransform as implemented in Seurat.
+
+https://satijalab.org/seurat/articles/sctransform_vignette
+
+```{r}
+obj <- SCTransform(obj = obj, vars.to.regress = "percent.mt", verbose = FALSE, return.only.var.genes = FALSE)
+obj <- RunPCA(obj, verbose = FALSE)
+ElbowPlot(obj, reduction = "pca")
+ndim <- 6
+obj <- RunTSNE(obj, dims = 1:ndim, seed.use = 123)
+obj <- RunUMAP(obj, dims = 1:ndim, seed.use = 123)
+obj <- FindNeighbors(obj, dims = 1:ndim, verbose = FALSE)
+obj <- FindClusters(obj, verbose = FALSE, resolution = 0.75, random.seed = 123)
+rm(ndim)
+```
+
+Internal control.
+
+```{r}
+g1 <- DimPlot(obj, group.by = "tag.tcr", pt.size = 0.1, cols = c("yes" = "#3c4b99",  "no" = "lightgray")) + theme(aspect.ratio = 1) + ggtitle("cellranger")
+g2 <- DimPlot(obj, group.by = "tag.tcr_mixcr", pt.size = 0.1, cols = c("yes" = "#3c4b99",  "no" = "lightgray")) + theme(aspect.ratio = 1) + ggtitle("mixcr")
+g3 <- DimPlot(obj, group.by = "tag.tcr_combi", pt.size = 0.15, cols = c("yes" = "#3c4b99",  "no" = "lightgray")) + theme(aspect.ratio = 1) + ggtitle("cellranger+mixcr")
+print(wrap_plots(g1, g2, g3, ncol = 3))
+rm(g1, g2, g3)
+```
+
+# magic
+
+To reduce sparsity and improve signal recovery, data imputation was performed using MAGIC. The Python package `magic-impute` was installed in a dedicated virtual environment and interfaced through `reticulate`.
+
+```{bash}
+#cd /Users/endikaprieto/venv
+#pip3.12 install magic-impute
+
+#library(reticulate)
+#reticulate::use_virtualenv("/Users/endikaprieto/venv", required = TRUE)
+#reticulate::py_install(c('magic'))
+#reticulate::import("magic")
+```
+
+MAGIC was applied to the dataset to obtain imputed expression values.
+
+```{r, warning=FALSE}
+obj@assays$MAGIC_SCT <- magic(obj, verbose=F, assay = "SCT", seed = 123)@assays$MAGIC_SCT
+```
+
+MAGIC-imputed expression values were incorporated into the Seurat object metadata, and the corresponding MAGIC object was retained for subsequent analyses.
+
+```{r}
+# --- Add Magic data to meta.data ---
+genes <- c("CD4", "CD8A", "CD8B", "ENTPD1", "PDCD1")
+common_cells <- intersect(colnames(obj), colnames(obj@assays$MAGIC_SCT$data))
+genes_present <- genes[genes %in% rownames(obj@assays$MAGIC_SCT$data)]
+genes_missing <- setdiff(genes, genes_present)
+for (g in genes_present) {
+  vals <- obj@assays$MAGIC_SCT$data[g, common_cells]
+  new_col <- paste0(g, "_mag")
+  obj[[new_col]] <- NA_real_
+  obj@meta.data[common_cells, new_col] <- as.numeric(vals)
+}
+# --- Umap plots ---
+p <- FeaturePlot(
+  obj,
+  features = c("PDCD1_mag", "ENTPD1_mag", paste0(genes, "_mag")),
+  ncol = 6, pt.size = 0.25
+) &
+  scale_color_gradientn(
+    colours = c("#D9F2E6", "#52B788", "#2C7FB8", "#08306B"),
+    oob = scales::squish,
+    na.value = "grey80"
+  ) &
+  theme(aspect.ratio = 1)
+plots_list[["IC07_GOIs_Magic"]] <- p
+# --- Save Magic data ---
+obj_MAGIC <- CreateSeuratObject(obj@assays$MAGIC_SCT)
+obj_MAGIC <- AddMetaData(obj = obj_MAGIC, metadata = obj@meta.data)
+saveRDS(obj_MAGIC, file.path(datapath, sample, folder_data, "seurat/magic.rds"))
+rm(obj_MAGIC)
+# --- Eliminate Magic assay and free unused memory ---
+DefaultAssay(obj) <- "SCT"
+obj[["MAGIC_SCT"]] <- NULL
+gc()
+rm(g, p, new_col, genes, common_cells, genes_present, genes_missing)
+```
+
+Ridge plots illustrating CD8A, CD8B, CD4, ENTPD1, and PDCD1 expression across samples were generated. The distribution valley separating positive and negative expression states was consistent across samples, including both bulk and PD-1–enriched conditions.
+
+```{r, warning=FALSE}
+markers <- c("CD8A_mag", "CD8B_mag", "CD4_mag", "ENTPD1_mag", "PDCD1_mag")
+ridge_plots <- list()
+for (i in markers) {
+  x <- data.frame(
+    marker_value = obj@meta.data[[i]],
+    sample_type = obj@meta.data$tag
+  )
+  g <- ggplot(x, aes(x = marker_value, y = sample_type, fill = sample_type)) +
+    geom_density_ridges(
+      aes(point_color = 1, point_fill = sample_type),
+      alpha = 0.75,
+      jittered_points = TRUE,
+      point_alpha = 0.1,
+      point_color = "black",
+      position = position_points_jitter(width = 0.05, height = 0),
+      point_shape = "|"
+    ) +
+    scale_fill_brewer(palette = "Paired") +
+    labs(
+      title = i,
+      x = "MAGIC-imputed expression",
+      y = "Sample",
+      fill = "Sample"
+    ) +
+    theme_ic +
+    theme(
+      legend.position = "none"
+    )
+  ridge_plots[[i]] <- g
+}
+plots_list[["IC08_cd48_density"]] <- wrap_plots(ridge_plots, ncol = 3)
+print(plots_list[["IC08_cd48_density"]])
+rm(markers, ridge_plots, i, x, g)
+```
+
+# pdfCluster
+
+Thresholds for CD4 and CD8A/CD8B expression were defined using density-based clustering (pdfCluster) applied to MAGIC-imputed values.
+
+Deterministic, to avoid randomnes and ensure reproducibility.
+
+```{r}
+n_per_sample <- 750
+sample_var <- obj@meta.data$tag
+idx_list <- split(seq_along(sample_var), sample_var)
+idx_selected <- unlist(lapply(idx_list, function(idx) {
+  idx[seq_len(min(n_per_sample, length(idx)))]
+}), use.names = FALSE)
+```
+
+Distribution of CD4_mag expression.
+
+```{r}
+set.seed(123)
+sc <- obj@meta.data$CD4_mag[idx_selected]
+pd <- pdfCluster(sc, hmult=0.75)
+cl <- groups(pd)
+names(cl) <- names(sc)
+table(cl)
+tapply(sc, cl, summary)
+dens <- density(sc)
+pdfcluster_plots[["CD4"]] <- {
+  grid.newpage()
+  dens <- density(sc)
+  plot(dens, main="CD4_mag", ylim=c(-0.005, max(dens$y)))
+  abline(v=tapply(sc, cl, min)[-1], lty=3, lwd=2, col='gray')
+  abline(v=tapply(sc, cl, max)[-1], lty=3, lwd=2, col='gray')
+  abline(h=c(-0.001, -0.005))
+  text(x=sc[cl==1], y=-0.001, col='green3', label='|')
+  text(x=sc[cl==2], y=-0.005, col='red3', label='|')
+  text(x=sc[cl==3], y=-0.005, col='purple', label='|')
+  recordPlot()
+}
+x <- tapply(sc, cl, min)
+x_sorted <- sort(x, na.last = NA)
+thresholdCD4 <- x_sorted[2]
+rm(sc, pd, cl, dens)
+```
+
+Distribution of CD8A_mag expression.
+
+```{r}
+set.seed(456)
+sc <- obj@meta.data$CD8A_mag[idx_selected]
+pd <- pdfCluster(sc, hmult=0.75)
+cl <- groups(pd)
+names(cl) <- names(sc)
+table(cl)
+tapply(sc, cl, summary)
+dens <- density(sc)
+pdfcluster_plots[["CD8A"]] <- {
+  grid.newpage()
+  dens <- density(sc)
+  plot(dens, main="CD8A_mag", ylim=c(-0.005, max(dens$y)))
+  abline(v=tapply(sc, cl, min)[-1], lty=3, lwd=2, col='gray')
+  abline(v=tapply(sc, cl, max)[-1], lty=3, lwd=2, col='gray')
+  abline(h=c(-0.001, -0.005))
+  text(x=sc[cl==1], y=-0.001, col='green3', label='|')
+  text(x=sc[cl==2], y=-0.005, col='red3', label='|')
+  text(x=sc[cl==3], y=-0.005, col='purple', label='|')
+  recordPlot()
+}
+x <- tapply(sc, cl, min)
+x_sorted <- sort(x, na.last = NA)
+thresholdCD8A <- x_sorted[2]
+rm(sc, pd, cl, dens)
+```
+
+Distribution of CD8B_mag expression.
+
+```{r}
+set.seed(789)
+sc <- obj@meta.data$CD8B_mag[idx_selected]
+pd <- pdfCluster(sc, hmult=0.75)
+cl <- groups(pd)
+names(cl) <- names(sc)
+table(cl)
+tapply(sc, cl, summary)
+dens <- density(sc)
+pdfcluster_plots[["CD8B"]] <- {
+  grid.newpage()
+  dens <- density(sc)
+  plot(dens, main="CD8B_mag", ylim=c(-0.005, max(dens$y)))
+  abline(v=tapply(sc, cl, min)[-1], lty=3, lwd=2, col='gray')
+  abline(v=tapply(sc, cl, max)[-1], lty=3, lwd=2, col='gray')
+  abline(h=c(-0.001, -0.005))
+  text(x=sc[cl==1], y=-0.001, col='green3', label='|')
+  text(x=sc[cl==2], y=-0.005, col='red3', label='|')
+  text(x=sc[cl==3], y=-0.005, col='purple', label='|')
+  recordPlot()
+}
+x <- tapply(sc, cl, min)
+x_sorted <- sort(x, na.last = NA)
+thresholdCD8B <- x_sorted[2]
+rm(sc, pd, cl, dens)
+```
+
+Internal control: The consistency of pdfCluster-derived thresholds across samples was assessed to ensure robust discrimination of CD4+ and CD8+ T cells.
+
+```{r, warning=FALSE}
+md <- data.frame(CD8A = obj@meta.data$CD8A_mag,
+                CD8B = obj@meta.data$CD8B_mag,
+                CD4 = obj@meta.data$CD4_mag,
+                CD39 = obj@meta.data$ENTPD1_mag,
+                PD1 = obj@meta.data$PDCD1_mag,
+                clusters = obj@meta.data$seurat_clusters
+                )
+g1 <- ggplot(md, aes(x = CD8A, y = CD4)) +
+  geom_point(
+    aes(color = CD8B),
+    alpha = 0.3,
+    size = 0.8
+  ) +
+  geom_density_2d(
+    aes(group = clusters),
+    color = "black",
+    linewidth = 0.3,
+    alpha = 0.6
+  ) +
+  scale_color_viridis_c(option = "H") +
+  facet_wrap(~clusters) +
+  geom_vline(xintercept = thresholdCD8A, linetype = "dashed", linewidth = 0.3) +
+  geom_hline(yintercept = thresholdCD4, linetype = "dashed", linewidth = 0.3) +
+  labs(
+    x = "CD8A",
+    y = "CD4",
+    color = "CD8B"
+  ) +
+  theme_ic
+g2 <- ggplot(md, aes(x = CD8B, y = CD4)) +
+  geom_point(
+    aes(color = CD8A),
+    alpha = 0.3,
+    size = 0.8
+  ) +
+  geom_density_2d(
+    aes(group = clusters),
+    color = "black",
+    linewidth = 0.3,
+    alpha = 0.6
+  ) +
+  scale_color_viridis_c(option = "H") +
+  facet_wrap(~clusters) +
+  geom_vline(xintercept = thresholdCD8B, linetype = "dashed", linewidth = 0.3) +
+  geom_hline(yintercept = thresholdCD4, linetype = "dashed", linewidth = 0.3) +
+  labs(
+    x = "CD8B",
+    y = "CD4",
+    color = "CD8A"
+  ) +
+  theme_ic
+plots_list[["IC09_pdfCluster_thresholds"]] <- wrap_plots(g1, g2, ncol = 2)
+print(plots_list[["IC09_pdfCluster_thresholds"]])
+rm(g1, g2, md)
+```
+
+Cells were classified as CD4+ or CD8+ based on the derived expression thresholds.
+
+```{r}
+# --- CD8+ T cells ---
+obj$CD8ind <- rep(FALSE, length(colnames(obj)))
+obj$CD8ind[obj$CD8A_mag>thresholdCD8A & obj$CD4_mag<thresholdCD4 & !(obj$percent.rpa<20 & obj$percent.mt > 15)] <- TRUE
+# --- CD4+ T cells ---
+obj$CD4ind <- rep(FALSE, length(colnames(obj)))
+obj$CD4ind[obj$CD8A_mag<thresholdCD8A & obj$CD4_mag>thresholdCD4 & !(obj$percent.rpa<20 & obj$percent.mt > 15)] <- TRUE
+# --- Consensus ---
+obj$magic.method <- ifelse(obj$CD8ind == TRUE & obj$CD4ind == FALSE, "cd8",
+                         ifelse(obj$CD8ind == FALSE & obj$CD4ind == TRUE, "cd4", "unknown"))
+```
+
+# annotations
+
+Cell identities were further refined using scGate.
+<https://github.com/carmonalab/scGate>
+
+```{r, warning=FALSE}
+scGate_models_DB <- get_scGateDB()
+models.pbmc <- scGate_models_DB$human$PBMC
+obj <- scGate(obj, assay = "SCT", model = models.pbmc)
+obj$scGate_multi <- ifelse(is.na(obj$scGate_multi), "unknown", obj$scGate_multi)
+rm(scGate_models_DB, models.pbmc)
+```
+
+Internal control: Evaluate the consistency of Magic-imputed expression with scGate for annotation of CD4+ and CD8+ T cells.
+
+```{r}
+table(obj$magic.method, obj$scGate_multi)
+p1 <- DimPlot(obj, group.by = "scGate_multi", split.by = "magic.method") + theme(aspect.ratio = 1) + ggtitle("magic.method_vs_scGate")
+```
+
+For the final CD4+/CD8+ annotations, scGate was used as the primary lineage classifier, with MAGIC providing complementary evidence. In cases of disagreement, the scGate annotation was prioritised.
+
+```{r}
+obj$celltype <- "unknown"
+obj$celltype <- ifelse(obj$magic.method == "cd4" & obj$scGate_multi == "CD4T", "cd4", obj$celltype)
+obj$celltype <- ifelse(obj$magic.method == "unknown" & obj$scGate_multi == "CD4T", "cd4", obj$celltype)
+obj$celltype <- ifelse(obj$magic.method == "cd8" & obj$scGate_multi == "CD4T", "cd4", obj$celltype)
+obj$celltype <- ifelse(obj$magic.method == "cd8" & obj$scGate_multi == "CD8T", "cd8", obj$celltype)
+obj$celltype <- ifelse(obj$magic.method == "unknown" & obj$scGate_multi == "CD8T", "cd8", obj$celltype)
+p2 <- DimPlot(obj, group.by = "scGate_multi", split.by = "celltype") + theme(aspect.ratio = 1) + ggtitle("consensus")
+plots_list[["IC10_celltype"]] <- wrap_plots(p1, p2, nrow = 2)
+print(plots_list$IC10_celltype)
+rm(p1, p2)
+```
+
+# tcr analysis
+
+Plots of TCR frequencies for each tool and combinations:
+
+```{r}
+# --- Save plots and tables ---
+save.plots <- file.path(datapath, sample, folder_data, "plots")
+dir.create(save.plots, recursive = F)
+save.freqs <- file.path(datapath, sample, folder_data, "frequencies")
+dir.create(save.freqs, recursive = F)
+# --- 1. Seurat-derived TCRs ---
+plot_tcr_frequencies(obj@meta.data %>% filter(celltype == "cd8"),
+                     y_log10 = TRUE,
+                     cdr3_col = "cdr3",
+                     v_gene_col = "v_gene",
+                     j_gene_col = "j_gene",
+                     chains_col = "chains",
+                     save_plot = NULL,
+                     save_table = NULL,
+                     save_shared_table = NULL
+                     )
+# --- 2. Combined TCRs ---
+plot_tcr_frequencies(obj@meta.data %>% filter(celltype == "cd8"),
+                     y_log10 = TRUE,
+                     cdr3_col = "cdr3_combi",
+                     v_gene_col = "v_gene_combi",
+                     j_gene_col = "j_gene_combi",
+                     chains_col = "chains_combi",
+                     save_plot = NULL,
+                     save_table = NULL,
+                     save_shared_table = NULL
+                     )
+# --- 3. Infusion product (IP) vs Blood (PD1hiCD39+) TCRs ---
+df <- obj@meta.data %>% filter(celltype == "cd8") %>% dplyr::mutate(tag = ifelse(grepl("Sample1|Sample3", tag), "IP", "PD1hiCD39+"))
+plot_tcr_frequencies(meta = df,
+                     samples = c("IP", "PD1hiCD39+"),
+                     y_log10 = TRUE,
+                     cdr3_col = "cdr3_combi",
+                     v_gene_col = "v_gene_combi",
+                     j_gene_col = "j_gene_combi",
+                     chains_col = "chains_combi",
+                     save_plot = NULL,
+                     save_table = NULL,
+                     save_shared_table = NULL
+                     )
+```
+
+Analyses were performed twice to capture either 70% or 100% of cumulative clonotype frequency.
+
+```{r}
+sample_names <- c(
+  Sample1 = "5_TIL-15_IP-TIL_4-1BB+_NeoAg_Pool03",
+  Sample2 = "6_TIL-15_CD8+_PD-1hiCD39+_PBL_4-1BB+_NeoAg_Pool01",
+  Sample3 = "7_TIL-15_IP-TIL_4-1BB+_NeoAg_Pool04",
+  Sample4 = "8_TIL-15_CD8+_PD-1hiCD39+_PBL_4-1BB+_NeoAg_Pool02"
+)
+if (!exists("freq_tables") || !is.list(freq_tables)) freq_tables <- list()
+if (!exists("topx_lists") || !is.list(topx_lists)) topx_lists <- list()
+max_clonotypes <- 5000
+legend_max <- 25
+for (coverage_target in c(70, 100)) {
+  for (i in names(sample_names)) {
+    df <- obj@meta.data %>%
+      dplyr::filter(celltype == "cd8") %>%
+      dplyr::filter(sample == i) %>%
+      dplyr::mutate(
+        cdr3_vj = paste(cdr3_combi, v_gene_combi, j_gene_combi, sep = "_"),
+        cdr3_vj = sapply(cdr3_vj, function(x) {
+          if (is.null(x) || all(is.na(x))) return("no_tcr")
+          if (is.list(x)) x <- paste(unlist(x), collapse = ";")
+          x
+        }),
+        cdr3_vj = as.character(cdr3_vj)
+      )
+    df$cdr3_vj[is.na(df$cdr3_vj) | df$cdr3_vj == "NA_NA_NA"] <- "no_tcr"
+    sample_label <- sample_names[[i]]
+    freq_table <- df %>%
+      dplyr::filter(cdr3_vj != "no_tcr") %>%
+      dplyr::group_by(sample, cdr3_vj) %>%
+      dplyr::summarise(
+        n = dplyr::n(),
+        chains_combi = dplyr::first(na.omit(chains_combi)),
+        cdr3_combi = dplyr::first(na.omit(cdr3_combi)),
+        v_gene_combi = dplyr::first(na.omit(v_gene_combi)),
+        d_gene = dplyr::first(na.omit(d_gene)),
+        j_gene_combi = dplyr::first(na.omit(j_gene)),
+        c_gene = dplyr::first(na.omit(c_gene)),
+        reads = dplyr::first(na.omit(reads)),
+        umis = dplyr::first(na.omit(umis)),
+        productive = dplyr::first(na.omit(productive)),
+        full_length = dplyr::first(na.omit(full_length)),
+        paired = dplyr::first(na.omit(paired)),
+        .groups = "drop"
+      ) %>%
+      dplyr::mutate(freq = n / sum(n) * 100) %>%
+      dplyr::arrange(dplyr::desc(freq)) %>%
+      dplyr::select(
+        cdr3_vj, freq, n,
+        chains_combi, cdr3_combi, v_gene_combi, d_gene, j_gene_combi, c_gene,
+        reads, umis, productive, full_length, paired
+      )
+    topx_tbl <- freq_table %>%
+      dplyr::arrange(dplyr::desc(freq)) %>%
+      dplyr::mutate(cumfreq = cumsum(freq))
+    idx <- which(topx_tbl$cumfreq >= coverage_target)[1]
+    if (is.na(idx)) idx <- nrow(topx_tbl)
+    idx <- min(idx, max_clonotypes)
+    topx_tbl <- topx_tbl %>% dplyr::slice(seq_len(idx)) %>% dplyr::select(-cumfreq)
+    freq_tables[[paste0(sample_label, "_full")]] <- freq_table
+    freq_tables[[paste0(sample_label, "_top", coverage_target)]] <- topx_tbl
+    top_keys <- topx_tbl$cdr3_vj
+    topx_lists[[paste0(sample_label, "_top", coverage_target)]] <- topx_tbl %>%
+      dplyr::mutate(sample_label = sample_label) %>%
+      dplyr::select(sample_label, cdr3_vj, freq, n)
+    legend_keys <- head(top_keys, legend_max)
+    inside_top_hidden_label <- "legend not shown"
+    outside_top_label <- paste0("outside top ", coverage_target, "%")
+    n_clones <- length(legend_keys)
+    base_palette <- grDevices::colorRampPalette(RColorBrewer::brewer.pal(8, "Paired"))
+    base_colors <- base_palette(max(11, n_clones))
+    color_manual <- stats::setNames(base_colors[seq_len(n_clones)], legend_keys)
+    color_manual[inside_top_hidden_label] <- "black"
+    color_manual[outside_top_label] <- "gray70"
+    cdr3_counts_sample <- freq_table %>%
+      dplyr::mutate(
+        cdr3_group = dplyr::case_when(
+          cdr3_vj %in% legend_keys ~ cdr3_vj,
+          cdr3_vj %in% top_keys ~ inside_top_hidden_label,
+          TRUE ~ outside_top_label
+        )
+      ) %>%
+      dplyr::group_by(cdr3_group) %>%
+      dplyr::summarise(n = sum(n), .groups = "drop") %>%
+      dplyr::mutate(freq = n / sum(n) * 100) %>%
+      dplyr::arrange(dplyr::desc(freq))
+    plot_levels <- c(
+      legend_keys[legend_keys %in% cdr3_counts_sample$cdr3_group],
+      inside_top_hidden_label,
+      outside_top_label
+    )
+    plot_levels <- unique(plot_levels[plot_levels %in% cdr3_counts_sample$cdr3_group])
+    cdr3_counts_sample <- cdr3_counts_sample %>%
+      dplyr::mutate(
+        cdr3_group = factor(cdr3_group, levels = plot_levels)
+      )
+    pie_sample <- ggplot2::ggplot(
+      cdr3_counts_sample,
+      ggplot2::aes(x = "", y = freq, fill = cdr3_group)
+    ) +
+      ggplot2::geom_col(color = "black", linewidth = 0.1) +
+      ggplot2::coord_polar(theta = "y", direction = 1) +
+      ggplot2::scale_fill_manual(values = color_manual, drop = FALSE) +
+      ggplot2::labs(
+        title = sample_label,
+        fill = paste0("CDR3_VJ (top ", coverage_target, "%; max ", max_clonotypes, ")")
+      ) +
+      ggplot2::theme_void() +
+      ggplot2::theme(
+        legend.position = "right",
+        plot.title = element_text(
+          hjust = 0, margin = margin(l=40),
+          size = 10
+          ),
+        plot.margin = margin(t = 10, r = 5, b = 5, l = 5)
+    )
+    plots_list[[paste0(sample_label, "_top", coverage_target)]] <- pie_sample
+  }
+  shared_file <- file.path(save.freqs, "shared_ip_blood_cellranger+mixcr_shared.tsv")
+  if (file.exists(shared_file) && file.access(shared_file, 4) == 0) {
+    shared_IP_blood <- data.table::fread(shared_file) %>%
+      dplyr::select(combo, full_tcr) %>%
+      dplyr::rename(sample_label = combo, cdr3_vj = full_tcr)
+    } else {
+      shared_IP_blood <- tibble::tibble(
+        sample_label = character(),
+        cdr3_vj = character()
+      )
+      }
+  topx_report <- dplyr::bind_rows(
+    topx_lists[grepl(paste0("_top", coverage_target, "$"), names(topx_lists))]
+  ) %>%
+    dplyr::select(sample_label, cdr3_vj)
+  topx_report <- dplyr::bind_rows(topx_report, shared_IP_blood) %>%
+    dplyr::group_by(cdr3_vj) %>%
+    dplyr::summarise(
+      sample_label = paste(sort(unique(stats::na.omit(sample_label))), collapse = " | "),
+      .groups = "drop"
+    )
+  write.table(
+    topx_report,
+    file.path(save.freqs, paste0("TCR_interrogated_top", coverage_target, ".tsv")),
+    sep = "\t",
+    dec = ",",
+    row.names = FALSE,
+    quote = FALSE
+  )
+}
+```
+
+# save
+
+```{r}
+# --- Save plots ---
+dir.create(file.path(datapath, sample, folder_data, "plots"), recursive = FALSE)
+for (i in names(plots_list)) {
+  outfile <- file.path(datapath, sample, folder_data, "plots", paste0(i, ".pdf"))
+  tryCatch({
+    pdf(file = outfile, width = 297 / 15, height = 210 / 15)
+    print(plots_list[[i]])
+    dev.off()
+  }, error = function(e) {
+    message("Error in plot: ", i)
+    message("  ", e$message)
+    if (dev.cur() != 1) {
+      try(dev.off(), silent = TRUE)
+    }
+  })
+}
+# --- Save frequency tables ---
+dir.create(file.path(datapath, sample, folder_data, "frequencies"), recursive = F)
+for (i in names(freq_tables)) {
+  write.table(freq_tables[[i]], file.path(datapath, sample, folder_data, "frequencies", paste0(i, "_cdr3_vj_frequencies.tsv")), sep = "\t", dec = ",", row.names = FALSE, quote = FALSE)
+}
+# --- Save Seurat object ---
+saveRDS(obj, file.path(datapath, sample, folder_data, "seurat/obj_filt.rds"))
+```

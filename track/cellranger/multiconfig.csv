@@ -1,0 +1,18 @@
+﻿[gene-expression]
+reference, /refsing/refdata-gex-GRCh38-2024-A
+create-bam,true
+
+[vdj]
+reference,/refsing/refdata-cellranger-vdj-GRCh38-alts-ensembl-7.1.0
+
+[libraries]
+fastq_id,fastqs,feature_types
+ITAG_AGG_VDJ_01-SCI7T002-SCI5T002_23GGJNLT3,/rawdata/X208SC26017969-Z01-F001_01/01.RawData/ITAG_AGG_VDJ_01,VDJ
+ITAG_AGG_GEX_01-SCI7T026-SCI5T026_23GGJNLT3,/rawdata/X208SC26017969-Z01-F001_02/01.RawData/ITAG_AGG_GEX_01,Gene Expression
+
+[samples]
+sample_id,ocm_barcode_ids
+sample1,OB1
+sample2,OB2
+sample3,OB3
+sample4,OB4

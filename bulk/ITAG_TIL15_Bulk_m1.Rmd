@@ -1,0 +1,206 @@
+---
+title: "Comparison of TCRβ frequencies across different samples from the TIL15 patient"
+author: "Endika Prieto <endikaprieto@vhio.net>"
+date: "2026-04-24"
+---
+
+# setup
+
+```{r setup, include=FALSE, message=FALSE}
+# --- Load libraries and custom functions ---
+source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/TIL15/setup-m1.R")
+# --- Define paths and sample identifiers ---
+datapath <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients"
+sample <- "TIL15"
+folder_data <- "ITAG_AGG_Bulk"
+# --- Define data loading path ---
+datapath_seqtr <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/collabs/Andrea Garcia VHIO/CancerDiscovery_2026/SEQTR/ISF_Rep_2026_00912/"
+datapath_reactive <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients/TIL15/ITAG_AGG_Bulk/outs/Reactive_IDs_TIL15.txt"
+# --- Initialize lists for plot storage ---
+plots_list <- list()
+```
+
+# data load
+
+```{r}
+bulk.data <- list()
+samples <- c("AGa0002", "AGa0007", "AGa0008", "AGa0009")
+for (i in samples) {
+  data_i <- fread(file.path(datapath_seqtr, paste0(i, "-2026-00912_TCRb_repertoire_corrected.txt"))) %>%
+    dplyr::filter(Frame == "IN") %>%
+    dplyr::mutate(freq = Count / sum(Count)) %>%
+    mutate(
+      TRBV = TRBV %>%
+        str_replace("^hTRBV", "TRBV") %>%
+        str_replace("^TRBV0([1-9])", "TRBV\\1")
+    ) %>%
+    mutate(
+      TRBJ = TRBJ %>%
+        str_replace("^hTRBJ", "TRBJ") %>%
+        str_replace("^TRBJ0([1-9])", "TRBJ\\1")
+    ) %>%
+    mutate(
+      CDR3_aaseq = str_replace(CDR3_aaseq, ".$", "")
+    ) %>%
+    mutate(
+      TCRb = paste0(CDR3_aaseq, "_", TRBV, "_", TRBJ)
+    ) %>%
+    select(TCRb, freq) %>%
+    arrange(desc(freq)) %>%
+    group_by(TCRb) %>%
+    summarise(
+      freq = sum(freq, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    arrange(desc(freq))
+  bulk.data[[i]] <- data_i
+}
+bulk.data.wide <- imap_dfr(bulk.data, ~ mutate(.x, sample = .y)) %>%
+  distinct(sample, TCRb, .keep_all = TRUE) %>%
+  pivot_wider(
+    names_from  = sample,
+    values_from = freq,
+    values_fill = NA_real_
+  ) %>%
+  rename_with(
+    ~ recode(.x,
+      AGa0002 = "TIL15_RNA_T",
+      AGa0007 = "TIL15_CD8_PD1hi_CD39pos",
+      AGa0008 = "TIL_Infusion_Product",
+      AGa0009 = "TIL15_PBMCs",
+      .default = .x
+    )
+  )
+```
+
+# annot
+
+Reactive TCR
+
+```{r}
+annot <- fread(datapath_reactive) %>% as.data.frame()
+bulk.data.wide <- bulk.data.wide %>% left_join(annot %>% select(TCRb, TCR.ID, Reactive), by = "TCRb")
+set.seed(123)
+tcr_ids <- paste0("ID", sprintf("%02d", 1:26))
+tcr_colors <- setNames(
+  Polychrome::createPalette(
+    length(tcr_ids),
+    seedcolors = c("#5DA5DA","#F15854","#60BD68","#B276B2")
+  ),
+  tcr_ids
+)
+```
+
+# frequency plots
+
+```{r}
+cond_levels <- c("TIL15_PBMCs",
+                 "TIL15_RNA_T",
+                 "TIL_Infusion_Product")
+df_long <- bulk.data.wide %>%
+  distinct() %>%
+  pivot_longer(all_of(cond_levels), names_to = "condition", values_to = "freq") %>%
+  mutate(
+    was_na = is.na(freq),
+    condition = factor(condition, levels = cond_levels)
+  )
+min_pos   <- df_long %>% dplyr::filter(!is.na(freq), freq > 0) %>% summarise(m = min(freq)) %>% pull(m)
+floor_val <- min(1e-7, min_pos / 10, na.rm = TRUE)
+df_long <- df_long %>%
+  mutate(freq_plot = if_else(was_na, floor_val, freq)) %>%
+  group_by(TCRb) %>%
+  mutate(multi = n_distinct(condition[!was_na]) > 1) %>%
+  ungroup()
+tcr_ids_present <- sort(unique(na.omit(df_long$TCR.ID)))
+tcr_colors_use  <- tcr_colors[names(tcr_colors) %in% tcr_ids_present]
+df_long <- df_long %>%
+  mutate(TCR.ID = factor(TCR.ID, levels = names(tcr_colors_use)))
+# --- Plot reactive TCRs ---
+plot_r <- ggplot(df_long, aes(x = condition, y = freq_plot)) +
+  geom_boxplot(
+    data = df_long %>%
+      dplyr::filter(!was_na, freq > 0) %>%
+      dplyr::group_by(condition) %>%
+      dplyr::filter(dplyr::n() >= 10) %>%
+      dplyr::ungroup(),
+    aes(y = freq_plot),
+    outlier.shape = 16, outlier.size = 0.25,
+    width = 0.5,
+    linewidth = 0.25,
+    fill = "grey90",
+    color = "black"
+  ) +
+  geom_line(
+    data = df_long %>% dplyr::filter(multi, !is.na(TCR.ID), Reactive == "Yes"),
+    aes(group = TCRb, color = TCR.ID, linewidth = !is.na(TCR.ID)),
+    alpha = 0.9
+  ) +
+  geom_point(
+    data = df_long %>% dplyr::filter(!multi, !was_na, !is.na(TCR.ID), freq > 0, Reactive == "Yes"),
+    aes(group = TCRb, color = TCR.ID),
+    size = 3
+  ) +
+  scale_x_discrete(drop = FALSE) +
+  scale_color_manual(values = tcr_colors_use, name = "Reactive TCR.ID") +
+  scale_linewidth_manual(values = c(`FALSE` = 0.1, `TRUE` = 0.75), guide = "none") +
+  scale_y_log10() +
+  theme_bw() +
+  theme(aspect.ratio = 1, legend.position = "right") +
+  guides(color = guide_legend(ncol = 2, override.aes = list(linewidth = 1))) +
+  labs(x = NULL, y = "Frequency", title = "TIL15_Deep_TCRb")
+# --- Plot non-reactive TCRs ---
+plot_nr <- ggplot(df_long, aes(x = condition, y = freq_plot)) +
+  geom_boxplot(
+    data = df_long %>%
+      dplyr::filter(!was_na, freq > 0) %>%
+      dplyr::group_by(condition) %>%
+      dplyr::filter(dplyr::n() >= 10) %>%
+      dplyr::ungroup(),
+    aes(y = freq_plot),
+    outlier.shape = 16, outlier.size = 0.25,
+    width = 0.5,
+    linewidth = 0.25,
+    fill = "grey90",
+    color = "black"
+  ) +
+  geom_line(
+    data = df_long %>% dplyr::filter(multi, !is.na(TCR.ID), Reactive == "No"),
+    aes(group = TCRb, color = TCR.ID, linewidth = !is.na(TCR.ID)),
+    alpha = 0.9
+  ) +
+  geom_point(
+    data = df_long %>% dplyr::filter(!multi, !was_na, !is.na(TCR.ID), freq > 0, Reactive == "No"),
+    aes(group = TCRb, color = TCR.ID),
+    size = 3
+  ) +
+  scale_x_discrete(drop = FALSE) +
+  scale_color_manual(values = tcr_colors_use, name = "Non-Reactive TCR.ID") +
+  scale_linewidth_manual(values = c(`FALSE` = 0.1, `TRUE` = 0.75), guide = "none") +
+  scale_y_log10() +
+  theme_bw() +
+  theme(aspect.ratio = 1, legend.position = "right") +
+  guides(color = guide_legend(ncol = 2, override.aes = list(linewidth = 1))) +
+  labs(x = NULL, y = "Frequency", title = "Bulk_TIL15_Non-Reactive")
+plots_list[["TIL15_Bulk_TCR_Frequency"]] <- wrap_plots(plot_r, plot_nr, ncol = 2)
+```
+
+# save
+
+```{r}
+# --- Save plots ---
+dir.create(file.path(datapath, sample, folder_data, "plots"), recursive = FALSE)
+for (i in names(plots_list)) {
+  outfile <- file.path(datapath, sample, folder_data, "plots", paste0(i, ".pdf"))
+  tryCatch({
+    pdf(file = outfile, width = 297 / 15, height = 210 / 15)
+    print(plots_list[[i]])
+    dev.off()
+  }, error = function(e) {
+    message("Error en plot: ", i)
+    message("  ", e$message)
+    if (dev.cur() != 1) {
+      try(dev.off(), silent = TRUE)
+    }
+  })
+}
+```

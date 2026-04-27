@@ -1,0 +1,1052 @@
+---
+title: "Identification of TCRs-of-interest in peripheral blood"
+author: "Endika Prieto <endikaprieto@vhio.net>"
+date: "2026-04-24"
+---
+
+# setup
+
+```{r, warning=FALSE, message=FALSE}
+# --- Load libraries and custom functions ---
+set.seed(123)
+source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/TIL15/setup-m2.R")
+# --- Define paths and sample identifiers ---
+datapath <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients"
+sample <- "TIL15"
+folder_data <- "ITAG_AGG_S01"
+# --- Define data loading path ---
+datapath_tcrb <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/collabs/Andrea Garcia VHIO/CancerDiscovery_2026/SEQTR/ISF_Rep_2026_00912"
+datapath_tcr_validation <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients/TIL15/ITAG_AGG_S01/outs/validated_tcrs.txt"
+# --- Initialize lists for plot storage ---
+plots_list <- list()
+pdfcluster_plots <- list()
+```
+
+# load
+
+```{r}
+obj <- readRDS(file.path(datapath, sample, folder_data, "seurat/obj_filt.rds"))
+```
+
+# annot
+
+Annotate TCRs identified in the NeoAg pool (top 100% and top 70%) by first running ITAG_TIL15_S02.Rmd.
+
+```{r}
+obj@meta.data$cdr3_vj <- ifelse(
+  is.na(obj$cdr3_combi) | obj$cdr3_combi == "" | obj$cdr3_combi == "no_tcr",
+  "no_tcr",
+  paste0(obj$cdr3_combi, "_", obj$v_gene_combi, "_", obj$j_gene_combi)
+)
+tcr_files <- c(
+  pool = "TCR_interrogated_top100.tsv",
+  pool_top70 = "TCR_interrogated_top70.tsv"
+)
+for (anno_col in names(tcr_files)) {
+  tcrs_of_interest <- read.table(
+    file.path(datapath, sample, "ITAG_AGG_S02", "frequencies", tcr_files[[anno_col]]),
+    header = TRUE,
+    sep = "\t",
+    stringsAsFactors = FALSE
+  )
+  idx <- match(obj@meta.data$cdr3_vj, tcrs_of_interest$cdr3_vj)
+  obj@meta.data[[anno_col]] <- tcrs_of_interest$sample_label[idx]
+}
+```
+
+Annotate cell compartments based on the tag and cell type information.
+
+Note: Sorted populations were supplemented with cells from the antagonistic compartment (i.e., opposite lineage and/or CD39 status) to meet minimum cell requirements for downstream analyses.
+
+```{r}
+obj$tag.compartment <- dplyr::case_when(
+  obj$tag == "Sample1" & obj$celltype == "cd8" ~ "CD8+CD39+",
+  obj$tag == "Sample1" & obj$celltype == "cd4" ~ "CD4+CD39-",
+  obj$tag == "Sample2" & obj$celltype == "cd4" ~ "CD4+CD39+",
+  obj$tag == "Sample2" & obj$celltype == "cd8" ~ "CD8+CD39-",
+  obj$tag == "Sample3" & obj$celltype == "cd8" ~ "CD8+Bulk",
+  obj$tag == "Sample3" & obj$celltype == "cd4" ~ "CD4+Bulk",
+  obj$tag == "Sample4" & obj$celltype == "cd4" ~ "CD4+Bulk",
+  TRUE ~ NA_character_
+)
+table(obj$tag.compartment)
+```
+
+PDCD1 levels for each compartment.
+
+```{r}
+# --- CD4+Bulk ---
+cd4_bulk <- subset(obj, subset = tag.compartment == "CD4+Bulk")
+idx_selected <- select_representative_indices(cd4_bulk@meta.data, n_total = 1500, tag_col = "tag")
+sc <- cd4_bulk@meta.data$PDCD1_mag[idx_selected]
+pd <- pdfCluster(sc, hmult = 0.75)
+summary(pd)
+cl <- pdfCluster::groups(pd)
+names(cl) <- names(sc)
+table(cl)
+tapply(sc, cl, summary)
+pdfcluster_plots[["PDCD1_CD4_Bulk"]] <- {
+  grid.newpage()
+  dens <- density(sc)
+  plot(dens, main = "PDCD1_CD4_Bulk", ylim = c(-0.005, max(dens$y)))
+  abline(v = tapply(sc, cl, min)[-1], lty = 3, lwd = 2, col = "gray")
+  abline(v = tapply(sc, cl, max)[-1], lty = 3, lwd = 2, col = "gray")
+  abline(h = c(-0.001, -0.005))
+  text(x = sc[cl == 1], y = -0.001, col = "green3", labels = "|")
+  text(x = sc[cl == 2], y = -0.005, col = "red3", labels = "|")
+  if (sum(cl == 3) > 0) text(x = sc[cl == 3], y = -0.005, col = "purple", labels = "|")
+  recordPlot()
+}
+cluster_vals <- split(sc, cl)
+cluster_medians <- sapply(cluster_vals, median)
+cluster_order <- order(cluster_medians)
+threshold_PDCD1_cd4_bulk <- if (length(cluster_order) >= 2) {
+  min(cluster_vals[[cluster_order[2]]])
+} else {
+  NA_real_
+}
+rm(sc, pd, cl, cluster_vals, cluster_medians, cluster_order)
+```
+
+```{r}
+# --- CD4+CD39+ ---
+cd4_cd39 <- subset(obj, subset = tag.compartment == "CD4+CD39+")
+idx_selected <- select_representative_indices(cd4_cd39@meta.data, n_total = 1500, tag_col = "tag")
+sc <- cd4_cd39@meta.data$PDCD1_mag[idx_selected]
+pd <- pdfCluster(sc, hmult = 0.75)
+summary(pd)
+cl <- pdfCluster::groups(pd)
+names(cl) <- names(sc)
+table(cl)
+tapply(sc, cl, summary)
+pdfcluster_plots[["PDCD1_CD4_CD39"]] <- {
+  grid.newpage()
+  dens <- density(sc)
+  plot(dens, main = "PDCD1_CD4_CD39", ylim = c(-0.005, max(dens$y)))
+  abline(v = tapply(sc, cl, min)[-1], lty = 3, lwd = 2, col = "gray")
+  abline(v = tapply(sc, cl, max)[-1], lty = 3, lwd = 2, col = "gray")
+  abline(h = c(-0.001, -0.005))
+  text(x = sc[cl == 1], y = -0.001, col = "green3", labels = "|")
+  text(x = sc[cl == 2], y = -0.005, col = "red3", labels = "|")
+  if (sum(cl == 3) > 0) text(x = sc[cl == 3], y = -0.005, col = "purple", labels = "|")
+  recordPlot()
+}
+cluster_vals <- split(sc, cl)
+cluster_medians <- sapply(cluster_vals, median)
+cluster_order <- order(cluster_medians)
+threshold_PDCD1_cd4_cd39 <- if (length(cluster_order) >= 2) {
+  min(cluster_vals[[cluster_order[2]]])
+} else {
+  NA_real_
+}
+rm(sc, pd, cl, cluster_vals, cluster_medians, cluster_order)
+```
+
+```{r}
+# --- CD4+CD39neg ---
+cd4_cd39neg <- subset(obj, subset = tag.compartment == "CD4+CD39-")
+idx_selected <- select_representative_indices(cd4_cd39neg@meta.data, n_total = 1500, tag_col = "tag")
+sc <- cd4_cd39neg@meta.data$PDCD1_mag[idx_selected]
+pd <- pdfCluster(sc, hmult = 0.75)
+summary(pd)
+cl <- pdfCluster::groups(pd)
+names(cl) <- names(sc)
+table(cl)
+tapply(sc, cl, summary)
+pdfcluster_plots[["PDCD1_CD4_CD39neg"]] <- {
+  grid.newpage()
+  dens <- density(sc)
+  plot(dens, main = "PDCD1_CD4_CD39neg", ylim = c(-0.005, max(dens$y)))
+  abline(v = tapply(sc, cl, min)[-1], lty = 3, lwd = 2, col = "gray")
+  abline(v = tapply(sc, cl, max)[-1], lty = 3, lwd = 2, col = "gray")
+  abline(h = c(-0.001, -0.005))
+  text(x = sc[cl == 1], y = -0.001, col = "green3", labels = "|")
+  text(x = sc[cl == 2], y = -0.005, col = "red3", labels = "|")
+  if (sum(cl == 3) > 0) text(x = sc[cl == 3], y = -0.005, col = "purple", labels = "|")
+  recordPlot()
+}
+cluster_vals <- split(sc, cl)
+cluster_medians <- sapply(cluster_vals, median)
+cluster_order <- order(cluster_medians)
+threshold_PDCD1_cd4_cd39neg <- if (length(cluster_order) >= 2) {
+  min(cluster_vals[[cluster_order[2]]])
+} else {
+  NA_real_
+}
+rm(sc, pd, cl, cluster_vals, cluster_medians, cluster_order)
+```
+
+```{r}
+# --- CD8+Bulk ---
+cd8_bulk <- subset(obj, subset = tag.compartment == "CD8+Bulk")
+idx_selected <- select_representative_indices(cd8_bulk@meta.data, n_total = 1000, tag_col = "tag")
+sc <- cd8_bulk@meta.data$PDCD1_mag[idx_selected]
+pd <- pdfCluster(sc, hmult = 0.75)
+summary(pd)
+cl <- pdfCluster::groups(pd)
+names(cl) <- names(sc)
+table(cl)
+tapply(sc, cl, summary)
+pdfcluster_plots[["PDCD1_CD8_Bulk"]] <- {
+  grid.newpage()
+  dens <- density(sc)
+  plot(dens, main = "PDCD1_CD8_Bulk", ylim = c(-0.005, max(dens$y)))
+  abline(v = tapply(sc, cl, min)[-1], lty = 3, lwd = 2, col = "gray")
+  abline(v = tapply(sc, cl, max)[-1], lty = 3, lwd = 2, col = "gray")
+  abline(h = c(-0.001, -0.005))
+  text(x = sc[cl == 1], y = -0.001, col = "green3", labels = "|")
+  text(x = sc[cl == 2], y = -0.005, col = "red3", labels = "|")
+  if (sum(cl == 3) > 0) text(x = sc[cl == 3], y = -0.005, col = "purple", labels = "|")
+  recordPlot()
+}
+cluster_vals <- split(sc, cl)
+cluster_medians <- sapply(cluster_vals, median)
+cluster_order <- order(cluster_medians)
+threshold_PDCD1_cd8_bulk <- if (length(cluster_order) >= 2) {
+  min(cluster_vals[[cluster_order[2]]])
+} else {
+  NA_real_
+}
+rm(sc, pd, cl, cluster_vals, cluster_medians, cluster_order)
+```
+
+```{r}
+# --- CD8+CD39+ ---
+cd8_cd39 <- subset(obj, subset = tag.compartment == "CD8+CD39+")
+idx_selected <- select_representative_indices(cd8_cd39@meta.data, n_total = 1500, tag_col = "tag")
+sc <- cd8_cd39@meta.data$PDCD1_mag[idx_selected]
+pd <- pdfCluster(sc, hmult = 0.75)
+summary(pd)
+cl <- pdfCluster::groups(pd)
+names(cl) <- names(sc)
+table(cl)
+tapply(sc, cl, summary)
+pdfcluster_plots[["PDCD1_CD8_CD39"]] <- {
+  grid.newpage()
+  dens <- density(sc)
+  plot(dens, main = "PDCD1_CD8_CD39", ylim = c(-0.005, max(dens$y)))
+  abline(v = tapply(sc, cl, min)[-1], lty = 3, lwd = 2, col = "gray")
+  abline(v = tapply(sc, cl, max)[-1], lty = 3, lwd = 2, col = "gray")
+  abline(h = c(-0.001, -0.005))
+  text(x = sc[cl == 1], y = -0.001, col = "green3", labels = "|")
+  text(x = sc[cl == 2], y = -0.005, col = "red3", labels = "|")
+  if (sum(cl == 3) > 0) text(x = sc[cl == 3], y = -0.005, col = "purple", labels = "|")
+  recordPlot()
+}
+cluster_vals <- split(sc, cl)
+cluster_medians <- sapply(cluster_vals, median)
+cluster_order <- order(cluster_medians)
+threshold_PDCD1_cd8_cd39 <- if (length(cluster_order) >= 2) {
+  min(cluster_vals[[cluster_order[2]]])
+} else {
+  NA_real_
+}
+rm(sc, pd, cl, cluster_vals, cluster_medians, cluster_order)
+```
+
+```{r}
+# --- CD8+CD39neg ---
+cd8_cd39neg <- subset(obj, subset = tag.compartment == "CD8+CD39-")
+idx_selected <- select_representative_indices(cd8_cd39neg@meta.data, n_total = 1500, tag_col = "tag")
+sc <- cd8_cd39neg@meta.data$PDCD1_mag[idx_selected]
+pd <- pdfCluster(sc, hmult = 0.75)
+summary(pd)
+cl <- pdfCluster::groups(pd)
+names(cl) <- names(sc)
+table(cl)
+tapply(sc, cl, summary)
+pdfcluster_plots[["PDCD1_CD8_CD39neg"]] <- {
+  grid.newpage()
+  dens <- density(sc)
+  plot(dens, main = "PDCD1_CD8_CD39neg", ylim = c(-0.005, max(dens$y)))
+  abline(v = tapply(sc, cl, min)[-1], lty = 3, lwd = 2, col = "gray")
+  abline(v = tapply(sc, cl, max)[-1], lty = 3, lwd = 2, col = "gray")
+  abline(h = c(-0.001, -0.005))
+  text(x = sc[cl == 1], y = -0.001, col = "green3", labels = "|")
+  text(x = sc[cl == 2], y = -0.005, col = "red3", labels = "|")
+  if (sum(cl == 3) > 0) text(x = sc[cl == 3], y = -0.005, col = "purple", labels = "|")
+  recordPlot()
+}
+cluster_vals <- split(sc, cl)
+cluster_medians <- sapply(cluster_vals, median)
+cluster_order <- order(cluster_medians)
+threshold_PDCD1_cd8_cd39neg <- if (length(cluster_order) >= 2) {
+  min(cluster_vals[[cluster_order[2]]])
+} else {
+  NA_real_
+}
+rm(sc, pd, cl, cluster_vals, cluster_medians, cluster_order)
+```
+
+# prior
+
+Aggregate and validate TCR clonotypes across CD4/CD8 compartments, summarizing cell counts per clonotype and annotating NeoAg-derived TCRs (top 100% and top 70%).
+
+```{r}
+sample_names <- c("CD4+Bulk","CD4+CD39-","CD4+CD39+","CD8+Bulk","CD8+CD39-","CD8+CD39+")
+captured_tables <- set_names(sample_names) %>%
+  purrr::map(\(grp)
+    obj@meta.data |>
+      dplyr::filter(tag.compartment == grp) |>
+      dplyr::mutate(
+        pool         = as.character(pool),
+        chains_combi = as.character(chains_combi),
+        cdr3_combi   = as.character(cdr3_combi),
+        v_gene_combi = as.character(v_gene_combi),
+        j_gene_combi = as.character(j_gene_combi),
+        cdr3_vj      = as.character(cdr3_vj)
+      ) |>
+      dplyr::count(
+        pool, chains_combi, cdr3_combi, v_gene_combi, j_gene_combi, cdr3_vj,
+        name = "n_cells", .drop = FALSE
+      ) |>
+      dplyr::arrange(pool, dplyr::desc(n_cells))
+  )
+src_map <- c("CD8+Bulk" = "Bulk", "CD8+CD39+" = "CD39+", "CD8+CD39-" = "CD39-")
+abc <- imap_dfr(src_map, \(src, grp)
+  captured_tables[[grp]] |>
+    filter(!is.na(pool)) |>
+    mutate(source = src)
+)
+tcrs_of_interest_top70 <- read.table(
+  file.path(datapath, sample, folder_data, "frequencies", "TCR_interrogated_top70.tsv"),
+  header = TRUE, sep = "\t", stringsAsFactors = FALSE
+)
+validation <- abc %>%
+  group_by(pool, chains_combi, cdr3_combi, v_gene_combi, j_gene_combi, cdr3_vj) %>%
+  summarise(
+    n_cells = paste(n_cells[order(source)], collapse = " | "),
+    source  = paste(source[order(source)], collapse = " | "),
+    .groups = "drop"
+  ) %>%
+  arrange(pool, desc(as.numeric(sub(" \\|.*$", "", n_cells)))) %>%
+  mutate(
+    top100 = "Y",
+    top70  = if_else(cdr3_vj %in% tcrs_of_interest_top70$cdr3_vj, "Y", "N")
+  )
+```
+
+Controls: Highly expanded CD8+ T cells.
+
+```{r}
+md_f <- obj@meta.data %>%
+  dplyr::filter(
+    tag.compartment %in% c("CD8+Bulk", "CD8+CD39+", "CD8+CD39-"),
+    is.na(pool)
+  ) %>%
+  dplyr::mutate(
+    source = dplyr::recode(tag.compartment,
+      "CD8+Bulk"  = "Bulk",
+      "CD8+CD39+" = "CD39+",
+      "CD8+CD39-" = "CD39-"
+    )
+  )
+selected_clonos <- md_f %>%
+  dplyr::count(
+    source, chains_combi, cdr3_combi, v_gene_combi, j_gene_combi, cdr3_vj,
+    name = "n_cells"
+  ) %>%
+  dplyr::group_by(source) %>%
+  dplyr::slice_max(n_cells, n = 3, with_ties = TRUE) %>%
+  dplyr::ungroup() %>%
+  dplyr::distinct(chains_combi, cdr3_combi, v_gene_combi, j_gene_combi, cdr3_vj)
+expanded_merged <- md_f %>%
+  dplyr::semi_join(
+    selected_clonos,
+    by = c("chains_combi","cdr3_combi","v_gene_combi","j_gene_combi","cdr3_vj")
+  ) %>%
+  dplyr::count(
+    source, chains_combi, cdr3_combi, v_gene_combi, j_gene_combi, cdr3_vj,
+    name = "n_cells"
+  ) %>%
+  tidyr::complete(
+    source = c("Bulk","CD39+","CD39-"),
+    tidyr::nesting(chains_combi, cdr3_combi, v_gene_combi, j_gene_combi, cdr3_vj),
+    fill = list(n_cells = 0)
+  ) %>%
+  dplyr::group_by(chains_combi, cdr3_combi, v_gene_combi, j_gene_combi, cdr3_vj) %>%
+  dplyr::summarise(
+    source  = paste(source, collapse = " | "),
+    n_cells = paste(n_cells, collapse = " | "),
+    .groups = "drop"
+  ) %>%
+  dplyr::mutate(
+    pool   = "Highly expanded controls",
+    top100 = "N",
+    top70  = "N",
+    n_cells = as.character(n_cells)
+  ) %>%
+  dplyr::select(
+    pool, chains_combi, cdr3_combi, v_gene_combi, j_gene_combi,
+    cdr3_vj, n_cells, source, top100, top70
+  )
+validation <- dplyr::bind_rows(validation, expanded_merged)
+```
+
+Controls: CD8+ T cells exhibiting high or low PDCD1 expression.
+
+```{r}
+res_hi_cd39pos <- make_pdcd1_controls(obj@meta.data, "CD8+CD39+", "Controls: CD8+CD39+_PDCD1hi", n_pick = 25, direction = "high")
+res_hi_bulk    <- make_pdcd1_controls(obj@meta.data, "CD8+Bulk",  "Controls: CD8+Bulk_PDCD1hi",   n_pick = 10, direction = "high")
+validation <- bind_rows(validation, res_hi_cd39pos$table, res_hi_bulk$table)
+res_lo_cd39pos <- make_pdcd1_controls(obj@meta.data, "CD8+CD39+", "Controls: CD8+CD39+_PDCD1lo", n_pick = 5, direction = "low")
+validation <- bind_rows(validation, res_lo_cd39pos$table)
+wrap_plots(res_hi_cd39pos$plot, res_hi_bulk$plot, res_lo_cd39pos$plot, nrow = 1)
+```
+
+Annotate the frequency of these TCRβ clonotypes in the tumor sample.
+
+```{r}
+AGa0002 <- fread(file.path(datapath_tcrb, "AGa0002-2026-00912_TCRb_repertoire_corrected.txt")) %>%
+  dplyr::filter(Frame == "IN") %>%
+  dplyr::mutate(freq = Count / sum(Count))
+AGa0002 <- AGa0002 %>%
+  mutate(
+    TRBV = TRBV %>%
+      str_replace("^hTRBV", "TRBV") %>%
+      str_replace("^TRBV0([1-9])", "TRBV\\1") %>%
+      str_replace("-1$", "")
+  ) %>%
+  mutate(
+    TRBJ = TRBJ %>%
+      str_replace("^hTRBJ", "TRBJ") %>%
+      str_replace("^TRBJ0([1-9])", "TRBJ\\1") %>%
+      str_replace("-1$", "")) %>%
+  mutate(
+    CDR3_aaseq = str_replace(CDR3_aaseq, ".$", "")
+  ) %>%
+  mutate(
+    TCRb = paste0(CDR3_aaseq, "_", TRBV, "_", TRBJ)
+  ) %>%
+  select(TCRb, freq) %>%
+  arrange(desc(freq))
+AGa0002_collapsed <- AGa0002 %>%
+  group_by(TCRb) %>%
+  summarise(
+    freq = sum(freq, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(freq))
+validation <- validation %>%
+  mutate(
+    TCRb = pmap_chr(
+      list(chains_combi, cdr3_combi, v_gene_combi, j_gene_combi),
+      \(chains, cdr3, v, j) {
+        ch  <- str_split(chains, ";", simplify = TRUE)
+        idx <- which(ch == "TRB")[1]
+        if (length(idx) == 0 || is.na(idx)) return(NA_character_)
+        cdr3_b <- str_split(cdr3, ";", simplify = TRUE)[1, idx]
+        v_b    <- str_split(v,    ";", simplify = TRUE)[1, idx]
+        j_b    <- str_split(j,    ";", simplify = TRUE)[1, idx]
+        v_b <- str_remove(v_b, "-1$")
+        j_b <- str_remove(j_b, "-1$")
+
+        str_c(cdr3_b, v_b, j_b, sep = "_")
+      }
+    )
+  )
+validation <- validation %>%
+  left_join(AGa0002_collapsed, by = "TCRb") %>%
+  filter(chains_combi %in% c("TRA;TRA;TRB", "TRA;TRB")) %>%
+  select(-cdr3_vj) %>%
+  select(chains_combi, cdr3_combi, v_gene_combi, j_gene_combi, n_cells, pool, source, top100, top70, TCRb, freq)
+```
+
+Collapse and save the table.
+
+```{r}
+validation <- validation %>%
+  dplyr::group_by(cdr3_combi, v_gene_combi, j_gene_combi) %>%
+  dplyr::summarise(
+    chains_combi = validation_collapse_col(chains_combi),
+    n_cells      = validation_collapse_col(n_cells),
+    pool         = validation_collapse_col(pool),
+    source       = validation_collapse_col(source),
+    top100       = validation_collapse_col(top100),
+    top70        = validation_collapse_col(top70),
+    TCRb         = validation_collapse_col(TCRb),
+    freq         = validation_collapse_col(freq),
+    .groups = "drop"
+  ) %>%
+  dplyr::select(
+    chains_combi, cdr3_combi, v_gene_combi, j_gene_combi,
+    n_cells, pool, source, top100, top70, TCRb, freq
+  )
+# --- Save a table with TCR candidates for validation ---
+timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+outfile <- file.path(
+  datapath, sample, folder_data, "validation",
+  paste0(timestamp, "_TCR_candidates.tsv")
+)
+write.table(
+  validation,
+  file = outfile,
+  sep = "\t",
+  dec = ",",
+  row.names = FALSE,
+  quote = FALSE
+)
+```
+
+⚠️ Note: At this stage, TCRs of interest and control TCRs were prioritized for individual validation.
+
+```{r}
+annot <- fread(datapath_tcr_validation) %>%
+  select(cdr3_combi, v_gene_combi, j_gene_combi, Pools, TCR.ID, Reactive) %>% distinct() %>% as.data.frame()
+obj@meta.data <- obj@meta.data %>%
+  rownames_to_column("cell") %>%
+  left_join(annot, by = c("cdr3_combi", "v_gene_combi", "j_gene_combi")) %>%
+  column_to_rownames("cell")
+table(obj$TCR.ID)
+# Palette
+set.seed(123)
+tcr_ids <- sort(unique(na.omit(annot$TCR.ID)))
+tcr_colors <- setNames(
+  Polychrome::createPalette(
+    length(tcr_ids),
+    seedcolors = c("#5DA5DA","#F15854","#60BD68","#B276B2")
+  ),
+  tcr_ids
+)
+```
+
+# bulk
+
+Add TCRβ clonotype frequencies from the tumor, CD8_PD1hi_CD39pos, Infusion_Product, and total PBMC samples for this patient.
+
+```{r}
+bulk.data <- list()
+samples <- c("AGa0002", "AGa0007", "AGa0008", "AGa0009")
+for (i in samples) {
+  data.path <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/collabs/Andrea Garcia VHIO/CancerDiscovery_2026/SEQTR/ISF_Rep_2026_00912/"
+  data_i <- fread(file.path(data.path, paste0(i, "-2026-00912_TCRb_repertoire_corrected.txt"))) %>%
+    dplyr::filter(Frame == "IN") %>%
+    dplyr::mutate(freq = Count / sum(Count)) %>%
+    mutate(
+      TRBV = TRBV %>%
+        str_replace("^hTRBV", "TRBV") %>%
+        str_replace("^TRBV0([1-9])", "TRBV\\1")
+    ) %>%
+    mutate(
+      TRBJ = TRBJ %>%
+        str_replace("^hTRBJ", "TRBJ") %>%
+        str_replace("^TRBJ0([1-9])", "TRBJ\\1")
+    ) %>%
+    mutate(
+      CDR3_aaseq = str_replace(CDR3_aaseq, ".$", "")
+    ) %>%
+    mutate(
+      TCRb = paste0(CDR3_aaseq, "_", TRBV, "_", TRBJ)
+    ) %>%
+    select(TCRb, freq) %>%
+    arrange(desc(freq)) %>%
+    group_by(TCRb) %>%
+    summarise(
+      freq = sum(freq, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    arrange(desc(freq))
+  bulk.data[[i]] <- data_i
+}
+bulk.data.wide <- imap_dfr(bulk.data, ~ mutate(.x, sample = .y)) %>%
+  distinct(sample, TCRb, .keep_all = TRUE) %>%
+  pivot_wider(
+    names_from  = sample,
+    values_from = freq,
+    values_fill = NA_real_
+  ) %>%
+  rename_with(
+    ~ recode(.x,
+      AGa0002 = "TIL15_RNA_T",
+      AGa0007 = "TIL15_CD8_PD1hi_CD39pos",
+      AGa0008 = "TIL_Infusion_Product",
+      AGa0009 = "TIL15_PBMCs",
+      .default = .x
+    )
+  )
+
+obj@meta.data <- obj@meta.data %>%
+  mutate(
+    TCRb = pmap_chr(
+      list(chains_combi, cdr3_combi, v_gene_combi, j_gene_combi),
+      make_trb_pheno
+    )
+  )
+obj@meta.data <- obj@meta.data %>%
+  rownames_to_column(var = "cell") %>%
+  left_join(bulk.data.wide, by = "TCRb") %>%
+  column_to_rownames(var = "cell")
+```
+
+# ranks
+
+Rank CD8+ T cells across compartments (bulk, CD39+, and CD39−) by PDCD1 expression, highlighting NeoAg-derived TCRs and controls.
+
+```{r}
+t <- obj@meta.data %>%
+  dplyr::select(cdr3_vj, TCR.ID, tag.compartment, Pools, PDCD1_mag, ENTPD1_mag, Reactive)
+t2 <- t %>%
+  dplyr::mutate(
+    tag.compartment = factor(tag.compartment),
+    tcr_id_plot = dplyr::case_when(
+      is.na(TCR.ID) ~ "NA",
+      TRUE ~ as.character(TCR.ID)
+    ),
+    pool_plot = dplyr::case_when(
+      is.na(Pools) ~ "NA",
+      TRUE ~ as.character(Pools)
+    ),
+    reactive_plot = dplyr::case_when(
+      Reactive == "Yes" ~ "Yes",
+      Reactive == "No" ~ "No",
+      TRUE ~ "NA"
+    ),
+    entpd1_plot = dplyr::case_when(
+      is.na(ENTPD1_mag) ~ 0,
+      TRUE ~ pmin(pmax(as.numeric(ENTPD1_mag), 0), 1)
+    )
+  )
+pool_levels_raw <- sort(unique(as.character(t2$pool_plot)))
+pool_levels <- c(setdiff(pool_levels_raw, "NA"), "NA")
+cols_pool <- c(
+  "High PDCD1 controls" = "#3C5488",
+  "Low PDCD1 controls" = "#5FA8DD",
+  "NeoAg_pools" = "#F25856",
+  "Highly expanded controls" = "#AD73AD",
+  "NA" = "gray85"
+)
+extra_pool_levels <- setdiff(pool_levels, names(cols_pool))
+if (length(extra_pool_levels) > 0) {
+  extra_cols <- make_qual_palette(length(extra_pool_levels), palette = "Dark2")
+  cols_pool <- c(cols_pool, setNames(extra_cols, extra_pool_levels))
+}
+cols_pool <- cols_pool[pool_levels]
+tcr_levels_raw <- sort(unique(as.character(t2$tcr_id_plot)))
+tcr_levels <- c(setdiff(tcr_levels_raw, "NA"), "NA")
+tcr_colors_use <- setNames(rep("gray85", length(tcr_levels)), tcr_levels)
+tcr_colors_use["NA"] <- "gray85"
+tcr_colors_use[names(tcr_colors)] <- ifelse(is.na(tcr_colors), "gray85", unname(tcr_colors))
+cols_reactive <- c("Yes" = "red3", "No" = "black", "NA" = "gray85")
+tcr_breaks <- names(tcr_colors_use)
+pool_breaks <- c(setdiff(pool_levels, "NA"), "NA")
+reactive_breaks <- c("Yes", "No", "NA")
+tcr_ncol <- max(1, ceiling(length(tcr_breaks) / 5))
+pool_ncol <- max(1, ceiling(length(pool_breaks) / 5))
+reactive_ncol <- max(1, ceiling(length(reactive_breaks) / 5))
+# --- Rank plots ---
+p1 <- make_barplot_single(
+  t2,
+  "CD8+CD39+",
+  threshold = threshold_PDCD1_cd8_bulk,
+  tcr_colors = tcr_colors_use,
+  cols_pool = cols_pool,
+  cols_reactive = cols_reactive
+)
+p2 <- make_barplot_single(
+  t2,
+  "CD8+Bulk",
+  top_n = NULL,
+  threshold = threshold_PDCD1_cd8_bulk,
+  tcr_colors = tcr_colors_use,
+  cols_pool = cols_pool,
+  cols_reactive = cols_reactive
+)
+p2.zoom <- make_barplot_single(
+  t2,
+  "CD8+Bulk",
+  top_n = 300,
+  threshold = threshold_PDCD1_cd8_bulk,
+  tcr_colors = tcr_colors_use,
+  cols_pool = cols_pool,
+  cols_reactive = cols_reactive
+)
+p3 <- make_barplot_single(
+  t2,
+  "CD8+CD39-",
+  top_n = NULL,
+  threshold = threshold_PDCD1_cd8_bulk,
+  tcr_colors = tcr_colors_use,
+  cols_pool = cols_pool,
+  cols_reactive = cols_reactive
+)
+plots_list[["Rank_CD8+"]] <- wrap_plots(p1, p2, p3, nrow = 3, guides = "collect") & theme(legend.position = "right")
+plots_list[["Rank_CD8+Bulk_Zoom"]] <- wrap_plots(p2, p2.zoom, nrow = 2, guides = "collect") & theme(legend.position = "right")
+```
+
+# cd8
+
+Subset CD8+ T cells.
+
+```{r}
+obj.cd8 <- subset(obj, subset = celltype == "cd8")
+DefaultAssay(obj.cd8) <- "RNA"
+ndim <- 6
+res <- 0.75
+set.seed(123)
+obj.cd8.int <- obj.cd8 %>%
+  NormalizeData() %>%
+  ScaleData() %>%
+  FindVariableFeatures() %>%
+  RunPCA(npcs = ndim) %>%
+  RunUMAP(dims = 1:ndim, seed.use = 123) %>%
+  FindNeighbors(dims = 1:ndim) %>%
+  FindClusters(resolution = res, random.seed = 123)
+p1 <- DimPlot(obj.cd8.int,
+        reduction = "umap",
+        group.by = "seurat_clusters",
+        label = T,
+        repel = F,
+        seed = 123,
+        label.size = 5) + 
+  theme(aspect.ratio = 1)
+p2 <- VlnPlot(obj.cd8.int, features = c("TRAC", "CD3D", "CD8A", "CD4"), group.by = "seurat_clusters", pt.size = 0, ncol = 1)
+wrap_plots(p1, p2, nrow = 1)
+```
+
+Refine clusters.
+
+```{r, warning=FALSE}
+t <- data.frame(
+  doublets = obj.cd8.int@meta.data$scDblFinder.score,
+  logreads = obj.cd8.int@meta.data$logreads,
+  percent.mt = obj.cd8.int@meta.data$percent.mt,
+  clusters = obj.cd8.int@meta.data$seurat_clusters
+  )
+g1 <- ggplot(t, aes(x = doublets, y = percent.mt)) + geom_point(aes(color = logreads), alpha = 0.5,size = 0.8) + scale_color_viridis_c(option = "H") + geom_density_2d(aes(color = logreads), alpha = 0.8) + facet_wrap(~clusters) + geom_vline(xintercept = 0.125, lty=2)  + geom_hline(yintercept = 6.5, lty=2) + theme(aspect.ratio = 1) + labs(title = "doublets vs logreads")
+print(g1)
+```
+
+Filter and re-run dimensionality reduction and clustering.
+
+```{r}
+md <- obj.cd8.int@meta.data
+cells.keep <- rownames(md)[
+  !(md$percent.mt > 7.5 | md$scDblFinder.score > 0.125)
+]
+# --- Filter low quality cells ---
+obj.cd8.int <- subset(
+  obj.cd8.int,
+  cells = cells.keep
+)
+obj.cd8.int <- obj.cd8.int %>%
+  FindNeighbors(dims = 1:ndim) %>%
+  FindClusters(resolution = res) %>%
+  RunUMAP(dims = 1:ndim, seed.use = 123)
+# --- UMAP plot ---
+DimPlot(obj.cd8.int,
+        reduction = "umap",
+        group.by = "seurat_clusters",
+        label = T,
+        repel = F,
+        seed = 123,
+        label.size = 5) + 
+  theme(aspect.ratio = 1)
+```
+Filter cluster 10.
+
+```{r, warning=FALSE, message=FALSE}
+obj.cd8.int <- subset(
+  obj.cd8.int,
+  subset = seurat_clusters != 10
+)
+obj.cd8.int <- obj.cd8.int %>%
+  FindNeighbors(dims = 1:ndim) %>%
+  FindClusters(resolution = res) %>%
+  RunUMAP(dims = 1:ndim, seed.use = 123)
+# --- UMAP plot ---
+DimPlot(obj.cd8.int,
+        reduction = "umap",
+        group.by = "seurat_clusters",
+        label = T,
+        repel = F,
+        seed = 123,
+        label.size = 5) + 
+  theme(aspect.ratio = 1)
+```
+
+Feature plots on UMAP embeddings.
+
+```{r, message=FALSE}
+# --- Load magic data ---
+magic.data <- readRDS(file.path(datapath, sample, folder_data, "seurat", "magic.rds"))
+genes <- c("GZMK", "ENTPD1", "HLA-DRA", "HAVCR2", "TIGIT", "LAG3", "TNFRSF18", "TNFRSF9", "ITGA1", "ITGA2", "ITGAE", "CD45RO", "CXCL13", "TOX", "GZMB", "PRF1", "NKG7",
+           "CD27", "CD28", "IL2RA", "CD69", "IFNG",
+           "TCF7", "LEF1", "LTB", "KLF2", "SELL","CCR7", "IL7R")
+common_cells <- intersect(colnames(obj.cd8.int), colnames(magic.data))
+genes_present <- genes[genes %in% rownames(magic.data@assays$RNA$data)]
+genes_missing <- setdiff(genes, genes_present)
+# --- Plots ---
+for (g in genes_present) {
+  vals <- magic.data@assays$RNA$data[g, common_cells]
+  new_col <- paste0(g, "_mag")
+  obj.cd8.int[[new_col]] <- NA_real_
+  obj.cd8.int@meta.data[common_cells, new_col] <- as.numeric(vals)
+}
+p2 <- FeaturePlot(
+  obj.cd8.int,
+  features = c("PDCD1_mag", "ENTPD1_mag", paste0(genes, "_mag")),
+  ncol = 6, pt.size = 0.25
+) &
+  scale_color_gradientn(
+    colours = c("#D9F2E6", "#52B788", "#2C7FB8", "#08306B"),
+    oob = scales::squish,
+    na.value = "grey80"
+  ) &
+  theme(aspect.ratio = 1)
+plots_list[["Umap_CD8_Features"]] <- p2
+```
+
+# pheno
+
+Manual annotation based on cluster pseudobulk analysis.
+
+```{r}
+DefaultAssay(obj.cd8.int) <- "RNA"
+obj.cd8.int <- NormalizeData(obj.cd8.int)
+all_markers <- FindAllMarkers(
+  obj.cd8.int,
+  group.by = "seurat_clusters",
+  logfc.threshold = 0.75,
+  min.pct = 0.25,
+  only.pos = TRUE
+)
+top_n_per_cluster <- all_markers %>%
+  filter(p_val_adj < 0.05) %>%
+  group_by(cluster) %>%
+  arrange(desc(avg_log2FC), p_val_adj, gene, .by_group = TRUE) %>%
+  slice_head(n = 30) %>%
+  ungroup()
+DefaultAssay(obj.cd8.int) <- "RNA"
+Idents(obj.cd8.int) <- "seurat_clusters"
+genes_check <- unique(top_n_per_cluster$gene)
+avg <- AggregateExpression(
+  obj.cd8.int,
+  assays = "RNA",
+  features = genes_check,
+  group.by = "seurat_clusters",
+  slot = "data",
+  return.seurat = FALSE
+)$RNA
+avg <- as.matrix(avg)
+avg <- avg[apply(avg, 1, function(x) all(is.finite(x))), , drop = FALSE]
+avg <- avg[apply(avg, 1, sd, na.rm = TRUE) > 0, , drop = FALSE]
+plots_list[["Heatmap_Markers_CD8"]] <- pheatmap::pheatmap(
+  t(avg),
+  scale = "column",
+  clustering_method = "complete",
+  fontsize_row = 7,
+  fontsize_col = 10,
+  cellwidth = 8,
+  cellheight = 8,
+  main = "AggregateExpression (RNA data) per seurat_cluster"
+)
+```
+
+Top dysregulated markers in each CD8+ T cell cluster.
+
+```{r}
+top_n_per_cluster %>%
+  split(.$cluster) %>%
+  lapply(\(df) paste(df$gene, collapse = ", ")) %>%
+  imap_chr(~ paste0(.y, ": ", .x)) %>%
+  cat(sep = "\n")
+```
+
+Assign a phenotype or cellular state to each cluster.
+
+```{r}
+cluster_labels <- c(
+  "0" = "CD8_Activated_PD1pos",
+  "1" = "CD8_TEMRA",
+  "2" = "CD8_Naive_TCM_like",
+  "3" = "CD8_NK_Like",
+  "4" = "CD8_Transitional_EffectorMemory",
+  "5" = "CD8_EarlyMemory_like",
+  "6" = "CD8_Activated",
+  "7" = "CD8_ChronicallyActivated_CXCL13pos",
+  "8" = "MAIT",
+  "9" = "CD8_StemLike_Memory"
+)
+levels_order <- c(
+  "CD8_Naive_TCM_like",
+  "CD8_EarlyMemory_like",
+  "CD8_StemLike_Memory",
+  "CD8_Transitional_EffectorMemory",
+  "CD8_Activated",
+  "CD8_Activated_PD1pos",
+  "CD8_ChronicallyActivated_CXCL13pos",
+  "CD8_TEMRA",
+  "CD8_NK_Like",
+  "MAIT"
+)
+obj.cd8.int$cellstate_manual <- factor(
+  plyr::mapvalues(
+    x = as.character(Idents(obj.cd8.int)),
+    from = names(cluster_labels),
+    to = unname(cluster_labels)
+  ),
+  levels = levels_order
+)
+celltype_cols <- c(
+  CD8_Naive_TCM_like = "#E6C229",
+  CD8_EarlyMemory_like = "#FFF3A3",
+  CD8_StemLike_Memory = "#9BE3E0",
+  CD8_Transitional_EffectorMemory = "#F299C1",
+  CD8_Activated = "#E39A2D",
+  CD8_Activated_PD1pos = "#2D8C7F",
+  CD8_ChronicallyActivated_CXCL13pos = "#7A1C3B",
+  CD8_TEMRA = "#6A3DFF",
+  CD8_NK_Like = "#4B1FA6",
+  MAIT = "#39D353"
+)
+cols_pools <- c(
+  "High PDCD1 controls" = "#3F5A8A",
+  "Highly expanded controls" = "#8E5EA2",
+  "Low PDCD1 controls" = "#6BAED6",
+  "NeoAg_pools" = "#E45756",
+  "NA" = "#7F7F7F"
+)
+```
+
+# umaps
+
+```{r}
+# --- Seurat clusters ---
+plot.a.cd8 <- DimPlot(obj.cd8.int,
+        reduction = "umap",
+        group.by = "seurat_clusters",
+        label = T,
+        repel = F,
+        seed = 123,
+        label.size = 5) + 
+  theme(aspect.ratio = 1)
+# --- Phenotype or cellular state ---
+plot.b.cd8 <- DimPlot(obj.cd8.int,
+        reduction = "umap",
+        group.by = "cellstate_manual",
+        cols = celltype_cols,
+        label.size = 5) + 
+  theme(aspect.ratio = 1)
+# --- Validated TCR IDs ---
+plot.c.cd8 <- DimPlot(obj.cd8.int,
+        reduction = "umap",
+        group.by = "TCR.ID",
+        cols = tcr_colors,
+        pt.size = ifelse(is.na(obj.cd8.int$TCR.ID), 0.25, 1),
+        alpha = ifelse(is.na(obj.cd8.int$TCR.ID), 0.25, 1),
+        label.size = 5) + 
+  theme(aspect.ratio = 1)
+# --- Validated TCR IDs (pools) ---
+plot.d.cd8 <- DimPlot(obj.cd8.int,
+        reduction = "umap",
+        group.by = "Pools",
+        cols = cols_pools,
+        pt.size = ifelse(is.na(obj.cd8.int$TCR.ID), 0.25, 1),
+        alpha = ifelse(is.na(obj.cd8.int$TCR.ID), 0.25, 1),
+        label.size = 5
+        ) + 
+  theme(aspect.ratio = 1)
+plots_list[["Umap_CD8_TCRs"]] <- wrap_plots(plot.a.cd8, plot.b.cd8, plot.c.cd8, plot.d.cd8, ncol = 2)
+print(plots_list[["Umap_CD8_TCRs"]])
+```
+
+TCRs identified from TIL expansion pools (5_TIL-15_IP-TIL_ and 7_TIL-15_IP-TIL_).
+
+```{r}
+til_pattern <- "5_TIL-15_IP-TIL_|7_TIL-15_IP-TIL_"
+colors <- c(
+  "TIL_pool_reactive"   = "red3",
+  "TIL_pool_non_tested" = "black",
+  "No"                  = "gray70"
+)
+# --- Top-100% ---
+res_top100 <- annotate_plot_til_pools(
+  obj = obj.cd8.int,
+  pool_col = "pool",
+  out_col = "til_pools",
+  plot_name = "Umap_CD8_til_pools_top100"
+)
+tcr_states_top100 <- res_top100$tcr_states
+# --- Top-70% ---
+res_top70 <- annotate_plot_til_pools(
+  obj = obj.cd8.int,
+  pool_col = "pool_top70",
+  out_col = "til_pools_top70",
+  plot_name = "Umap_CD8_til_pools_top70"
+)
+tcr_states_top70 <- res_top70$tcr_states
+```
+
+# stats
+
+Calculate the percentage of reactive cells and TCRs in the overall CD8+ T cell population and the CD8+CD39+ T cell population.
+
+```{r, warning=FALSE}
+valid_tcr <- function(x) {
+  x[!is.na(x) & x != "no_tcr" & x != ""]
+}
+# --- Cell level ---
+# CD8+
+total_cells <- dim(obj.cd8.int)[2]
+reactive_cells <- sum(obj.cd8.int$Reactive == "Yes", na.rm = TRUE)
+pct_overall <- (reactive_cells / total_cells) * 100
+# CD8+CD39+
+obj.cd8.int.sub <- subset(obj.cd8.int, subset = tag.compartment == "CD8+CD39+")
+total_cells <- dim(obj.cd8.int.sub)[2]
+reactive_cells <- sum(obj.cd8.int.sub$Reactive == "Yes", na.rm = TRUE)
+pct_cd8cd39 <- (reactive_cells / total_cells) * 100
+# --- TCR level ---
+# CD8+
+total_tcr <- length(unique(valid_tcr(obj.cd8.int$cdr3_vj)))
+reactive_tcr <- obj.cd8.int@meta.data %>%
+  dplyr::filter(Reactive == "Yes") %>%
+  dplyr::pull(cdr3_vj) %>%
+  valid_tcr() %>%
+  unique() %>%
+  length()
+pct_overall_tcr <- (reactive_tcr / total_tcr) * 100
+# CD8+CD39+
+total_tcr <- length(unique(valid_tcr(obj.cd8.int.sub$cdr3_vj)))
+reactive_tcr <- obj.cd8.int.sub@meta.data %>%
+  dplyr::filter(Reactive == "Yes") %>%
+  dplyr::pull(cdr3_vj) %>%
+  valid_tcr() %>%
+  unique() %>%
+  length()
+pct_cd8cd39_tcr <- (reactive_tcr / total_tcr) * 100
+# --- Summary table ---
+summary_table <- data.frame(
+  Subset = c("CD8+", "CD8+CD39+"),
+  Percentage_Cells_reactive = c(pct_overall, pct_cd8cd39),
+  Percentage_TCRs_reactive  = c(pct_overall_tcr, pct_cd8cd39_tcr)
+)
+print(summary_table)
+```
+
+# save
+
+```{r}
+# --- Save plots ---
+dir.create(file.path(datapath, sample, folder_data, "plots"), recursive = FALSE)
+for (i in names(plots_list)) {
+  outfile <- file.path(datapath, sample, folder_data, "plots", paste0(i, ".pdf"))
+  tryCatch({
+    pdf(file = outfile, width = 297 / 15, height = 210 / 15)
+    print(plots_list[[i]])
+    dev.off()
+  }, error = function(e) {
+    message("Error en plot: ", i)
+    message("  ", e$message)
+    if (dev.cur() != 1) {
+      try(dev.off(), silent = TRUE)
+    }
+  })
+}
+# --- Save frequency tables ---
+dir.create(file.path(datapath, sample, folder_data, "frequencies"), recursive = F)
+write.table(tcr_states_top70, file.path(datapath, sample, folder_data, "frequencies", "CD8_til_pools_top70.tsv"), sep = "\t", dec = ",", row.names = FALSE, quote = FALSE)
+write.table(tcr_states_top100, file.path(datapath, sample, folder_data, "frequencies", "CD8_til_pools_top100.tsv"), sep = "\t", dec = ",", row.names = FALSE, quote = FALSE)
+# --- Save Seurat object ---
+saveRDS(obj, file.path(datapath, sample, folder_data, "seurat/obj_filt_final.rds"))
+saveRDS(obj.cd8.int, file.path(datapath, sample, folder_data, "seurat/obj_filt_cd8_final.rds"))
+```

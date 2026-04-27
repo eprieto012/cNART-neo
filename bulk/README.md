@@ -18,5 +18,6 @@ This module compares TCRβ clonotype frequencies across bulk repertoire samples 
 ## Output
 
 <p align="center">
-  <img src="plot-clono.jpg">
+  <img src="plot.png" width="950"><br>
+  <em>Frequency of TCRs-of-interest in the indicated samples.</em>
 </p>

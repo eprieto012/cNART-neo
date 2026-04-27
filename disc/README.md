@@ -35,7 +35,7 @@ A `10x-sample-sheet.tsv` file, generated automatically within the pipeline, was 
 CD4+ and CD8+ lineage labels were assigned using a combined strategy integrating expression imputation, unsupervised thresholding, and reference-based gating.
 
 - [MAGIC](https://magic.readthedocs.io/en/stable/) was used for gene-expression imputation.
-- CD4 and CD8A/CD8B thresholds were estimated from imputed values using [`pdfCluster`](https://github.com/cran/pdfCluster/tree/master).
+- CD4 and CD8A/CD8B thresholds were estimated from imputed values using [pdfCluster](https://github.com/cran/pdfCluster/tree/master).
 - Final lineage labels were assigned using [scGate](https://github.com/carmonalab/scGate), prioritised when classifications disagreed.
 
 ## Output
@@ -46,5 +46,6 @@ Candidate clonotype sets covering 70% and 100% of cumulative clonotype frequency
 - `TCR_interrogated_top70.tsv`
 
 <p align="center">
-  <img src="plot.png" width="1000">
+  <img src="plot.png" width="950"><br>
+  <em>Figure caption here.</em>
 </p>

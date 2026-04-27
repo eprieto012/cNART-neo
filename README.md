@@ -15,7 +15,7 @@ The project is organised into three sequential analysis phases.
 ## Workflow Structure
 
 ### Phase 1: Dominant Clonotype Discovery  
-**Module:** [`ident/`](https://github.com/eprieto012/cNART-neo/tree/main/ident)
+**Module:** [`disc/`](https://github.com/eprieto012/cNART-neo/tree/main/disc)
 
 Run `ITAG_TIL15_S02_m1.Rmd`
 
@@ -32,7 +32,8 @@ This workflow:
 ### Phase 2: Cross-Compartment Tracking and Validation  
 **Module:** [`track/`](https://github.com/eprieto012/cNART-neo/tree/main/track)
 
-Run `ITAG_TIL15_S02_m2.Rmd`
+Run `ITAG_TIL15_S01_m1.Rmd`
+Run `ITAG_TIL15_S01_m2.Rmd`
 
 This workflow uses Phase 1 outputs to:
 
@@ -54,7 +55,7 @@ This workflow compares candidate clonotype frequencies across tumor biopsy, peri
 
 ## Setup Scripts
 
-**Module:** [`setup/`](https://github.com/eprieto012/cNART-neo/tree/main/bulk)
+**Module:** [`setup/`](https://github.com/eprieto012/cNART-neo/tree/main/setup)
 
 `setup-m1.R` — common setup used by the main single-cell workflows, including preprocessing, QC, clonotype recovery, filtering, annotation, and clonotype-frequency analysis.
 `setup-m2.R` — module-specific setup for cross-compartment tracking and validation.

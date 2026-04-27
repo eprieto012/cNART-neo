@@ -13,11 +13,11 @@ See `crsing_multi_9.0.0.sh` and `multiconfig.csv` for additional details on the 
 
 ## Analysis Workflow
 
-Run `ITAG_TIL15_S02_m1.Rmd` to reproduce the preprocessing workflow from Cell Ranger outputs to filtered annotated single-cell objects.
+Run `ITAG_TIL15_S01_m1.Rmd` to reproduce the preprocessing workflow from Cell Ranger outputs to filtered annotated single-cell objects.
 
 Ambient RNA contamination was assessed with [SoupX](https://cran.r-project.org/web/packages/SoupX/vignettes/pbmcTutorial.html). V(D)J annotations were imported into Seurat using [djvdj](https://rnabioco.github.io/djvdj/), samples were merged, and quality-control metrics were evaluated before downstream filtering and annotation.
 
-Run `ITAG_TIL15_S02_m2.Rmd` to reproduce the downstream cross-compartment clonotype tracking and prioritisation workflow.
+Run `ITAG_TIL15_S01_m2.Rmd` to reproduce the downstream cross-compartment clonotype tracking and prioritisation workflow.
 
 ## TCR Rescue with MiXCR
 
@@ -29,7 +29,7 @@ This script requires a `10x-sample-sheet.tsv` file, generated automatically in t
 
 The following cells or features were excluded:
 
-- Doublets
+- Doublets ([scDblFinder](https://github.com/plger/scDblFinder))
 - Ribosomal genes
 - TCR genes
 - Genes with very low expression
@@ -57,9 +57,7 @@ The following compartments were considered:
 
 ## PDCD1 Thresholding
 
-PDCD1 expression thresholds were estimated independently within each compartment using MAGIC-imputed expression values and density-based clustering with `pdfCluster`.
-
-These thresholds were used to define PDCD1-high and PDCD1-low control clonotypes.
+PDCD1 expression thresholds were estimated independently within each compartment using MAGIC-imputed expression values and density-based clustering with `pdfCluster`. These thresholds were used to define PDCD1-high and PDCD1-low control clonotypes.
 
 ## CD8+ T-Cell State Analysis
 
@@ -77,9 +75,7 @@ Candidate TCRs were prioritised based on:
 - PDCD1 expression
 - Availability of matched TCRβ repertoire information
 
-At this stage, 26 TCRs were reconstructed, transduced into healthy-donor PBMCs, and tested for reactivity against the patient’s candidate (neo)antigens.
-
-After experimental validation, TCR reactivity status was projected back onto the single-cell dataset for downstream visualization and phenotypic interpretation.
+At this stage, 26 TCRs were reconstructed, transduced into healthy-donor PBMCs, and tested for reactivity against the patient’s candidate (neo)antigens. After experimental validation, TCR reactivity status was projected back onto the single-cell dataset for downstream visualization and phenotypic interpretation.
 
 ## Output
 

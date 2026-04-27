@@ -14,8 +14,8 @@ Validated clonotypes were annotated using `reactive-clono.txt`, including TCR id
 
 ## Output
 
+Frequency plots were generated to compare reactive and non-reactive clonotypes across compartments.
+
 <p align="center">
   <img src="plot.jpg" width="1000">
 </p>
-
-Frequency plots were generated to compare reactive and non-reactive clonotypes across compartments.

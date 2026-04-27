@@ -33,12 +33,12 @@ This workflow requires a `10x-sample-sheet.tsv` file, generated automatically wi
 
 The following cells or features were excluded:
 
-- doublets
-- ribosomal genes
+- Doublets ([scDblFinder](https://github.com/plger/scDblFinder))
+- Ribosomal genes
 - TCR genes
-- genes with very low expression
-- cells with >20% mitochondrial reads (`percent.mt`)
-- cells without recovered TCR information
+- Genes with very low expression
+- Cells with >20% mitochondrial reads (`percent.mt`)
+- Cells without recovered TCR information
 
 ## CD4+/CD8+ T-Cell Annotation
 

@@ -44,8 +44,3 @@ Candidate clonotype sets covering 70% and 100% of cumulative clonotype frequency
 
 - `TCR_interrogated_top100.tsv`
 - `TCR_interrogated_top70.tsv`
-
-<p align="center">
-  <img src="plot.png" width="950"><br>
-  <em>Figure caption here.</em>
-</p>

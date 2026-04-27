@@ -81,8 +81,3 @@ Validated TCR annotations are provided in `validated-tcrs.txt`.
 ## Output
 
 Cross-compartment clonotype rankings, CD8+ state projections, and visualisation of validated reactive clonotypes.
-
-<p align="center">
-  <img src="plot.png" width="950"><br>
-  <em>Figure caption here.</em>
-</p>

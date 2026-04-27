@@ -83,4 +83,6 @@ After experimental validation, TCR reactivity status was projected back onto the
 
 ## Output
 
-![Plot](plot.png)
+<p align="center">
+  <img src="plot.png" width="1000">
+</p>

@@ -57,4 +57,6 @@ Outputs include candidate clonotype sets covering 70% and 100% of cumulative clo
 
 ## Output
 
-![Plot](plot.png)
+<p align="center">
+  <img src="plot.png" width="1000">
+</p>

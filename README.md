@@ -10,16 +10,14 @@ This repository contains the computational workflows used to identify dominant n
 
 The project is organised into three sequential analysis phases.
 
----
+***
 
 ## Workflow Structure
 
-### Phase 1 — Dominant Clonotype Discovery
+### Phase 1: Dominant Clonotype Discovery  
+**Module:** [`ident/`](https://github.com/eprieto012/cNART-neo/tree/main/ident)
 
-Run:
-
-`ITAG_TIL15_S02_m1.Rmd`  
-[Module documentation](https://github.com/eprieto012/cNART-neo/blob/main/ident/README.md)
+Run `ITAG_TIL15_S02_m1.Rmd`
 
 This workflow:
 
@@ -29,19 +27,12 @@ This workflow:
 - annotates CD4+ and CD8+ T cells
 - identifies dominant clonotypes
 
-Outputs include cumulative clonotype-frequency candidate sets:
+***
 
-- `TCR_interrogated_top100.tsv`
-- `TCR_interrogated_top70.tsv`
+### Phase 2: Cross-Compartment Tracking and Validation  
+**Module:** [`track/`](https://github.com/eprieto012/cNART-neo/tree/main/track)
 
----
-
-### Phase 2 — Cross-Compartment Tracking and Validation
-
-Run:
-
-`ITAG_TIL15_S02_m2.Rmd`  
-[Module documentation](https://github.com/eprieto012/cNART-neo/blob/main/track/README.md)
+Run `ITAG_TIL15_S02_m2.Rmd`
 
 This workflow uses Phase 1 outputs to:
 
@@ -50,21 +41,13 @@ This workflow uses Phase 1 outputs to:
 - map clonotypes onto CD8+ T-cell states
 - project experimentally validated reactive TCRs onto the single-cell atlas
 
----
+***
 
-### Phase 3 — Compartment Frequency Analysis
+### Phase 3: Compartment Frequency Analysis  
+**Module:** [`bulk/`](https://github.com/eprieto012/cNART-neo/tree/main/bulk)
 
-Run:
-
-`ITAG_TIL15_Bulk_m1.Rmd`  
-[Module documentation](https://github.com/eprieto012/cNART-neo/blob/main/bulk/README.md)
+Run `ITAG_TIL15_Bulk_m1.Rmd`
 
 This workflow compares candidate clonotype frequencies across tumor biopsy, peripheral blood, and TIL infusion product samples.
 
----
-
-## Repository Modules
-
-- **ident/** — Dominant clonotype discovery following antigen-specific co-culture with TMG-loaded autologous B cells.
-- **track/** — Cross-compartment tracking and validation of dominant clonotypes by PD-1/CD39 phenotype.
-- **bulk/** — Frequency analysis across tumor, blood, and infusion-product compartments.
+***

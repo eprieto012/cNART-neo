@@ -51,3 +51,12 @@ Run `ITAG_TIL15_Bulk_m1.Rmd`
 This workflow compares candidate clonotype frequencies across tumor biopsy, peripheral blood, and TIL infusion product samples.
 
 ***
+
+## Setup Scripts
+
+**Module:** [`setup/`](https://github.com/eprieto012/cNART-neo/tree/main/bulk)
+
+`setup-m1.R` — common setup used by the main single-cell workflows, including preprocessing, QC, clonotype recovery, filtering, annotation, and clonotype-frequency analysis.
+`setup-m2.R` — module-specific setup for cross-compartment tracking and validation.
+
+These scripts define package dependencies, Python/MAGIC configuration, plotting themes, random seeds, and helper functions used by the main R Markdown workflows.

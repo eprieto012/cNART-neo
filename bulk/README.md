@@ -14,4 +14,4 @@ Validated clonotypes were annotated using `reactive-clono.txt`, including TCR id
 
 ## Output
 
-![Plot](figures/TIL15_Bulk_TCR_Frequency.png)
+![Plot](plot.png)

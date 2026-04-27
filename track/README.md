@@ -80,3 +80,7 @@ Candidate TCRs were prioritised based on:
 At this stage, 26 TCRs were reconstructed, transduced into healthy-donor PBMCs, and tested for reactivity against the patient’s candidate (neo)antigens.
 
 After experimental validation, TCR reactivity status was projected back onto the single-cell dataset for downstream visualization and phenotypic interpretation.
+
+## Output
+
+![Plot](plot.png)

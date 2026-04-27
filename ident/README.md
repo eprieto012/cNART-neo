@@ -54,3 +54,7 @@ Outputs include candidate clonotype sets covering 70% and 100% of cumulative clo
 
 - `TCR_interrogated_top100.tsv`
 - `TCR_interrogated_top70.tsv`
+
+## Output
+
+![Plot](plot.png)

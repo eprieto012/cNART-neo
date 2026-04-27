@@ -1,6 +1,6 @@
 ﻿[gene-expression]
 reference, /refsing/refdata-gex-GRCh38-2024-A
-create-bam,false
+create-bam,true
 
 [vdj]
 reference,/refsing/refdata-cellranger-vdj-GRCh38-alts-ensembl-7.1.0

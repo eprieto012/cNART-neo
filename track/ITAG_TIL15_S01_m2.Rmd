@@ -9,7 +9,7 @@ date: "2026-04-24"
 ```{r, warning=FALSE, message=FALSE}
 # --- Load libraries and custom functions ---
 set.seed(123)
-source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/TIL15/setup-m2.R")
+source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/TIL15/setup/setup-m2.R")
 # --- Define paths and sample identifiers ---
 datapath <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients"
 sample <- "TIL15"
@@ -742,6 +742,7 @@ DimPlot(obj.cd8.int,
         label.size = 5) + 
   theme(aspect.ratio = 1)
 ```
+
 Filter cluster 10.
 
 ```{r, warning=FALSE, message=FALSE}
@@ -908,7 +909,9 @@ cols_pools <- c(
 )
 ```
 
-# umaps
+# plots
+
+Umap plots.
 
 ```{r}
 # --- Seurat clusters ---
@@ -948,6 +951,23 @@ plot.d.cd8 <- DimPlot(obj.cd8.int,
   theme(aspect.ratio = 1)
 plots_list[["Umap_CD8_TCRs"]] <- wrap_plots(plot.a.cd8, plot.b.cd8, plot.c.cd8, plot.d.cd8, ncol = 2)
 print(plots_list[["Umap_CD8_TCRs"]])
+```
+Contribution of each phenotype to the different CD8+ T cell compartments.
+
+```{r}
+clusters <- "tag.compartment"              
+category <- "cellstate_manual"           
+colors <- celltype_cols        
+plot.e.cd8 <- plot_cluster_percentages(subset(obj.cd8.int, subset = !is.na(tag.compartment)),
+                               clusters = clusters, 
+                               category = category, 
+                               title = paste0(clusters, "_", category),
+                               colors = colors,
+                               horizontal = TRUE,
+                               exclude = "NA",
+                               limits = NULL,
+                               remove = TRUE)
+plots_list[["Umap_CD8_tag.compartment"]] <- wrap_plots(plot.b.cd8, plot.e.cd8, nrow = 2)
 ```
 
 TCRs identified from TIL expansion pools (5_TIL-15_IP-TIL_ and 7_TIL-15_IP-TIL_).

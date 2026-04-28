@@ -8,7 +8,7 @@ date: "2026-04-24"
 
 ```{r setup, include=FALSE, message=FALSE}
 # --- Load libraries and custom functions ---
-source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/TIL15/setup-m1.R")
+source("/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/scripts/TIL15/setup/setup-m1.R")
 # --- Define paths and sample identifiers ---
 datapath <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients"
 sample <- "TIL15"

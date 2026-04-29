@@ -986,7 +986,7 @@ res_top100 <- annotate_plot_til_pools(
   out_col = "til_pools",
   plot_name = "Umap_CD8_til_pools_top100"
 )
-tcr_states_top100 <- res_top100$tcr_states
+res_top100$tcr_states
 # --- Top-70% ---
 res_top70 <- annotate_plot_til_pools(
   obj = obj.cd8.int,
@@ -994,7 +994,61 @@ res_top70 <- annotate_plot_til_pools(
   out_col = "til_pools_top70",
   plot_name = "Umap_CD8_til_pools_top70"
 )
-tcr_states_top70 <- res_top70$tcr_states
+res_top70$tcr_states
+```
+
+TCRs identified from CD8+PD-1hi expansion pools (6_TIL-15_CD8+_PD-1hiCD39+_ and 8_TIL-15_CD8+_PD-1hiCD39+).
+
+```{r}
+til_pattern <- "6_TIL-15_CD8+_PD-1hiCD39+_|8_TIL-15_CD8+_PD-1hiCD39+"
+colors <- c(
+  "TIL_pool_reactive"   = "red3",
+  "TIL_pool_non_tested" = "black",
+  "No"                  = "gray70"
+)
+# --- Top-100% ---
+res_top100 <- annotate_plot_til_pools(
+  obj = obj.cd8.int,
+  pool_col = "pool",
+  out_col = "til_pools",
+  plot_name = "Umap_CD8_cd8pd1hi_pools_top100"
+)
+res_top100$tcr_states
+# --- Top-70% ---
+res_top70 <- annotate_plot_til_pools(
+  obj = obj.cd8.int,
+  pool_col = "pool_top70",
+  out_col = "til_pools_top70",
+  plot_name = "Umap_CD8_cd8pd1hi_pools_top70"
+)
+res_top70$tcr_states
+```
+
+TCRs identified from bith TIL and CD8+PD-1hi expansion pools.
+
+```{r}
+til_pattern <- "5_TIL-15_IP-TIL_|6_TIL-15_CD8+_PD-1hiCD39+_|7_TIL-15_IP-TIL_|8_TIL-15_CD8+_PD-1hiCD39+"
+colors <- c(
+  "TIL_pool_reactive"   = "red3",
+  "TIL_pool_non_tested" = "black",
+  "No"                  = "gray70"
+)
+# --- Top-100% ---
+res_top100 <- annotate_plot_til_pools(
+  obj = obj.cd8.int,
+  pool_col = "pool",
+  out_col = "til_pools",
+  plot_name = "Umap_CD8_til+pbl_pools_top100"
+)
+res_top100$tcr_states
+# --- Top-70% ---
+res_top70 <- annotate_plot_til_pools(
+  obj = obj.cd8.int,
+  pool_col = "pool_top70",
+  out_col = "til_pools_top70",
+  plot_name = "Umap_CD8_til+pbl_pools_top70"
+)
+res_top70$tcr_states
 ```
 
 # stats

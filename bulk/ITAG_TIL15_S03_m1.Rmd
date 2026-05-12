@@ -14,7 +14,7 @@ datapath <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_c
 sample <- "TIL15"
 folder_data <- "ITAG_AGG_Bulk"
 # --- Define data loading path ---
-datapath_seqtr <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/collabs/Andrea Garcia VHIO/CancerDiscovery_2026/SEQTR/ISF_Rep_2026_00912/"
+datapath_seqtr <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/collabs/VHIO Andrea Garcia/CancerDiscovery_2026/SEQTR/ISF_Rep_2026_00912"
 datapath_reactive <- "/Users/endikaprieto/Library/CloudStorage/OneDrive-VHIO/pbl/single_cell/sc_pipeline/patients/TIL15/ITAG_AGG_Bulk/outs/reactive-clono.txt"
 # --- Initialize lists for plot storage ---
 plots_list <- list()
@@ -95,8 +95,7 @@ tcr_colors <- setNames(
 
 ```{r}
 cond_levels <- c("TIL15_PBMCs",
-                 "TIL15_RNA_T",
-                 "TIL_Infusion_Product")
+                 "TIL15_RNA_T")
 df_long <- bulk.data.wide %>%
   distinct() %>%
   pivot_longer(all_of(cond_levels), names_to = "condition", values_to = "freq") %>%

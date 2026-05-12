@@ -89,13 +89,13 @@ make_trb_pheno <- function(chains, cdr3, v, j, sep = ";") {
   vg <- str_split(v      %||% "", fixed(sep))[[1]] %>% str_trim()
   jg <- str_split(j      %||% "", fixed(sep))[[1]] %>% str_trim()
   n <- max(length(ch), length(cd), length(vg), length(jg))
-  if (n == 0) return(NA_real_)
+  if (n == 0) return(NA_character_)
   length(ch) <- n; length(cd) <- n; length(vg) <- n; length(jg) <- n
   idx_trb <- which(ch == "TRB")
-  if (length(idx_trb) == 0) return(NA_real_)
+  if (length(idx_trb) == 0) return(NA_character_)
   out <- paste0(cd[idx_trb], "_", vg[idx_trb], "_", jg[idx_trb])
   out <- out[!is.na(out) & out != "NA_NA_NA" & out != "__"]
-  if (length(out) == 0) NA_real_ else paste(out, collapse = ";")
+  if (length(out) == 0) NA_character_ else paste(out, collapse = ";")
 }
 
 # 4
@@ -300,7 +300,9 @@ plot_cluster_percentages <- function(object,
                                      horizontal = FALSE, 
                                      limits = NULL, 
                                      exclude = NULL, 
-                                     remove = TRUE) {
+                                     remove = TRUE,
+                                     print_percentages = TRUE,
+                                     digits = 2) {
   data <- FetchData(object, vars = c(clusters, category))
   if (remove) {
     data <- data %>%
@@ -321,8 +323,15 @@ plot_cluster_percentages <- function(object,
     group_by(across(all_of(c(clusters, category)))) %>%
     summarise(n = n(), .groups = "drop") %>%
     group_by(across(all_of(clusters))) %>%
-    mutate(percentage = n / sum(n) * 100) %>%
+    mutate(
+      total_group = sum(n),
+      percentage = n / total_group * 100,
+      percentage_round = round(percentage, digits)
+    ) %>%
     ungroup()
+  if (print_percentages) {
+    print(counts)
+  }
   p <- ggplot(counts, aes_string(x = clusters, y = "percentage", fill = category)) +
     geom_bar(stat = "identity", position = "stack", color = "black", linewidth = 0.2) +
     labs(x = clusters, y = "Percentage", fill = category, title = title) +

@@ -1116,38 +1116,81 @@ valid_tcr <- function(x) {
 }
 # --- Cell level ---
 # CD8+
-total_cells <- dim(obj.cd8.int)[2]
-reactive_cells <- sum(obj.cd8.int$Reactive == "Yes", na.rm = TRUE)
-pct_overall <- (reactive_cells / total_cells) * 100
+total_cells_cd8 <- dim(obj.cd8.int)[2]
+yes_cells_cd8 <- sum(obj.cd8.int$Reactive == "Yes", na.rm = TRUE)
+no_cells_cd8 <- sum(obj.cd8.int$Reactive == "No", na.rm = TRUE)
+pct_yes_cd8 <- (yes_cells_cd8 / total_cells_cd8) * 100
+pct_no_cd8 <- (no_cells_cd8 / total_cells_cd8) * 100
 # CD8+CD39+
-obj.cd8.int.sub <- subset(obj.cd8.int, subset = tag.compartment == "CD8+CD39+")
-total_cells <- dim(obj.cd8.int.sub)[2]
-reactive_cells <- sum(obj.cd8.int.sub$Reactive == "Yes", na.rm = TRUE)
-pct_cd8cd39 <- (reactive_cells / total_cells) * 100
+obj.cd8.int.cd39pos <- subset(obj.cd8.int, subset = tag.compartment == "CD8+CD39+")
+total_cells_cd39pos <- dim(obj.cd8.int.cd39pos)[2]
+yes_cells_cd39pos <- sum(obj.cd8.int.cd39pos$Reactive == "Yes", na.rm = TRUE)
+no_cells_cd39pos <- sum(obj.cd8.int.cd39pos$Reactive == "No", na.rm = TRUE)
+pct_yes_cd39pos <- (yes_cells_cd39pos / total_cells_cd39pos) * 100
+pct_no_cd39pos <- (no_cells_cd39pos / total_cells_cd39pos) * 100
+# CD8+CD39-
+obj.cd8.int.cd39neg <- subset(obj.cd8.int, subset = tag.compartment == "CD8+CD39-")
+total_cells_cd39neg <- dim(obj.cd8.int.cd39neg)[2]
+yes_cells_cd39neg <- sum(obj.cd8.int.cd39neg$Reactive == "Yes", na.rm = TRUE)
+no_cells_cd39neg <- sum(obj.cd8.int.cd39neg$Reactive == "No", na.rm = TRUE)
+pct_yes_cd39neg <- (yes_cells_cd39neg / total_cells_cd39neg) * 100
+pct_no_cd39neg <- (no_cells_cd39neg / total_cells_cd39neg) * 100
 # --- TCR level ---
 # CD8+
-total_tcr <- length(unique(valid_tcr(obj.cd8.int$cdr3_vj)))
-reactive_tcr <- obj.cd8.int@meta.data %>%
+total_tcr_cd8 <- length(unique(valid_tcr(obj.cd8.int$cdr3_vj)))
+yes_tcr_cd8 <- obj.cd8.int@meta.data %>%
   dplyr::filter(Reactive == "Yes") %>%
   dplyr::pull(cdr3_vj) %>%
   valid_tcr() %>%
   unique() %>%
   length()
-pct_overall_tcr <- (reactive_tcr / total_tcr) * 100
+no_tcr_cd8 <- obj.cd8.int@meta.data %>%
+  dplyr::filter(Reactive == "No") %>%
+  dplyr::pull(cdr3_vj) %>%
+  valid_tcr() %>%
+  unique() %>%
+  length()
+pct_yes_tcr_cd8 <- (yes_tcr_cd8 / total_tcr_cd8) * 100
+pct_no_tcr_cd8 <- (no_tcr_cd8 / total_tcr_cd8) * 100
 # CD8+CD39+
-total_tcr <- length(unique(valid_tcr(obj.cd8.int.sub$cdr3_vj)))
-reactive_tcr <- obj.cd8.int.sub@meta.data %>%
+total_tcr_cd39pos <- length(unique(valid_tcr(obj.cd8.int.cd39pos$cdr3_vj)))
+yes_tcr_cd39pos <- obj.cd8.int.cd39pos@meta.data %>%
   dplyr::filter(Reactive == "Yes") %>%
   dplyr::pull(cdr3_vj) %>%
   valid_tcr() %>%
   unique() %>%
   length()
-pct_cd8cd39_tcr <- (reactive_tcr / total_tcr) * 100
+no_tcr_cd39pos <- obj.cd8.int.cd39pos@meta.data %>%
+  dplyr::filter(Reactive == "No") %>%
+  dplyr::pull(cdr3_vj) %>%
+  valid_tcr() %>%
+  unique() %>%
+  length()
+pct_yes_tcr_cd39pos <- (yes_tcr_cd39pos / total_tcr_cd39pos) * 100
+pct_no_tcr_cd39pos <- (no_tcr_cd39pos / total_tcr_cd39pos) * 100
+# CD8+CD39-
+total_tcr_cd39neg <- length(unique(valid_tcr(obj.cd8.int.cd39neg$cdr3_vj)))
+yes_tcr_cd39neg <- obj.cd8.int.cd39neg@meta.data %>%
+  dplyr::filter(Reactive == "Yes") %>%
+  dplyr::pull(cdr3_vj) %>%
+  valid_tcr() %>%
+  unique() %>%
+  length()
+no_tcr_cd39neg <- obj.cd8.int.cd39neg@meta.data %>%
+  dplyr::filter(Reactive == "No") %>%
+  dplyr::pull(cdr3_vj) %>%
+  valid_tcr() %>%
+  unique() %>%
+  length()
+pct_yes_tcr_cd39neg <- (yes_tcr_cd39neg / total_tcr_cd39neg) * 100
+pct_no_tcr_cd39neg <- (no_tcr_cd39neg / total_tcr_cd39neg) * 100
 # --- Summary table ---
 summary_table <- data.frame(
-  Subset = c("CD8+", "CD8+CD39+"),
-  Percentage_Cells_reactive = c(pct_overall, pct_cd8cd39),
-  Percentage_TCRs_reactive  = c(pct_overall_tcr, pct_cd8cd39_tcr)
+  Subset = c("CD8+", "CD8+CD39+", "CD8+CD39-"),
+  Percentage_Cells_Yes = c(pct_yes_cd8, pct_yes_cd39pos, pct_yes_cd39neg),
+  Percentage_Cells_No = c(pct_no_cd8, pct_no_cd39pos, pct_no_cd39neg),
+  Percentage_TCRs_Yes = c(pct_yes_tcr_cd8, pct_yes_tcr_cd39pos, pct_yes_tcr_cd39neg),
+  Percentage_TCRs_No = c(pct_no_tcr_cd8, pct_no_tcr_cd39pos, pct_no_tcr_cd39neg)
 )
 print(summary_table)
 ```

@@ -331,6 +331,17 @@ plot_cluster_percentages <- function(object,
     ungroup()
   if (print_percentages) {
     print(counts)
+    cat("\nPiechart percentages for:", title, "\n")
+    pie_percentages <- counts %>%
+      arrange(.data[[clusters]], .data[[category]]) %>%
+      select(
+        all_of(clusters),
+        all_of(category),
+        n,
+        total_group,
+        percentage_round
+      )
+    print(pie_percentages)
   }
   p <- ggplot(counts, aes_string(x = clusters, y = "percentage", fill = category)) +
     geom_bar(stat = "identity", position = "stack", color = "black", linewidth = 0.2) +
